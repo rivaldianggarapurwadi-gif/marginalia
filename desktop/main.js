@@ -47,6 +47,8 @@ const runEdit = (action) => (_, win) => {
   })()`);
 };
 
+const callPage = (code) => (_, win) => win && win.webContents.executeJavaScript(code, true);
+
 function buildMenu() {
   const template = [
     { role: 'appMenu' },
@@ -72,6 +74,10 @@ function buildMenu() {
         { role: 'copy' },
         { role: 'paste' },
         { role: 'selectAll' },
+        { type: 'separator' },
+        { label: 'Find…', accelerator: 'CmdOrCtrl+F', click: callPage('openFind()') },
+        { label: 'Find Next', accelerator: 'CmdOrCtrl+G', click: callPage('findStep(1)') },
+        { label: 'Find Previous', accelerator: 'Shift+CmdOrCtrl+G', click: callPage('findStep(-1)') },
       ],
     },
     {

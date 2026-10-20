@@ -8,6 +8,7 @@ A desktop-first study workspace for PDFs. Open a lecture deck or paper, highligh
 - Per-page margins you can fold, resize, or write in directly; pages extend downward when notes overflow
 - Leader lines link every note to its anchor
 - Search and filter all annotations across files, then jump back to the source
+- Find in document (⌘F, ⌘G / ⇧⌘G for next / previous) with every match highlighted on the page
 - Undo/redo, "Original only" view, copy notes as Markdown
 - Local-first: PDFs and notes are stored in the browser (IndexedDB)
 
