@@ -226,6 +226,39 @@ body[data-tool="eraser"] .tooloverlay{cursor:cell}
 .sticky.min > :not(.st-open){display:none}
 .sticky.min .st-open{display:grid;place-items:center;width:30px;height:30px;border:0;background:none;color:#2B2615;padding:0}
 .st-open svg{width:16px;height:16px}
+.sticky{display:flex;flex-direction:column}
+.sticky textarea{flex:1}
+/* Shapes */
+.sticky.shape-square{border-radius:0}
+.sticky.shape-rounded{border-radius:14px}
+.sticky.shape-rounded .st-resize{border-bottom-right-radius:14px}
+.sticky.shape-square .st-resize{border-bottom-right-radius:0}
+.sticky.shape-circle{border-radius:50%;aspect-ratio:1;justify-content:center;text-align:center}
+.sticky.shape-circle .st-head{margin:0 0 4px;padding:0;border-bottom:0;justify-content:center}
+.sticky.shape-circle .st-sp{flex:0 0 4px}
+.sticky.shape-circle .st-resize{right:14%;bottom:14%;border-radius:0 0 8px 0}
+.sticky.shape-circle textarea{text-align:center;flex:0 0 auto}
+.sticky.min.shape-circle{aspect-ratio:auto;padding:0;border-radius:50%}
+/* Format panel */
+.st-fmtbtn{font-family:var(--f-display);font-size:12px;font-weight:600;width:26px}
+.st-fmtbtn[aria-expanded="true"]{background:rgba(43,38,21,.14);color:#2B2615}
+.st-fmt{position:fixed;z-index:65;width:252px;display:grid;grid-template-columns:minmax(0,1fr);gap:10px;padding:12px;text-align:left;cursor:default;
+  background:var(--raised);color:var(--fg);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);font-family:var(--f-ui);font-size:12px;line-height:1.3}
+.fmt-row{display:grid;gap:5px}
+.fmt-l{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.fmt-opts{display:flex;gap:4px}
+.fmt-opts button{flex:1;display:grid;place-items:center;gap:2px;border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:5px 0;font-size:11.5px;color:var(--fg)}
+.fmt-opts button:hover{border-color:var(--accent)}
+.fmt-opts button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+.fmt-opts svg{width:20px;height:16px}
+.fmt-text{display:flex;align-items:center;gap:6px}
+.fmt-text button{border:1px solid var(--line);background:var(--surface);border-radius:7px;width:34px;height:28px;font-family:var(--f-display);color:var(--fg)}
+.fmt-text button:hover{border-color:var(--accent)}
+.fmt-text button:disabled{opacity:.35;cursor:default}
+.fmt-text .fsv{flex:1;text-align:center;font-family:var(--f-mono);font-size:12px}
+.fmt-text input[type=range]{flex:1 1 0;width:0;min-width:0;accent-color:var(--accent)}
+.fmt-opts button{min-width:0}
+.fmt-text .fsv{flex:0 0 40px}
 body[data-tool="sticky"] .tooloverlay{display:block;cursor:copy}
 body.clean .stickies{display:none}
 .card blockquote{margin:0 0 4px;font-family:var(--f-display);font-style:italic;font-size:12px;line-height:1.4;color:var(--muted);
@@ -685,31 +718,92 @@ function makeSticky(a){
   const s = document.createElement('div'); s.dataset.id = a.id;
   s.innerHTML = `<button class="st-open" title="Open sticky note" aria-label="Open sticky note">${ICON_NOTE}</button>
     <div class="st-head" title="Drag to move"><button class="tag" title="Change type"></button><span class="st-sp"></span>
+      <button class="st-btn st-fmtbtn" title="Size, shape and text" aria-label="Size, shape and text size" aria-expanded="false">Aa</button>
       <button class="st-btn st-color" title="Change color" aria-label="Change color"><span></span></button>
       <button class="st-btn st-min" title="Minimize" aria-label="Minimize">${ICON_MIN}</button>
       <button class="st-btn st-dock" title="Move to the margin" aria-label="Move to the margin">${ICON_DOCK}</button>
       <button class="st-btn del" title="Remove note" aria-label="Remove note">${ICON_X}</button></div>
     ${a.quote ? `<div class="st-quote">“${esc(a.quote)}”</div>` : ''}
     <textarea rows="2" id="note-${a.id}" aria-label="Sticky note text" placeholder="${a.tag === 'question' ? 'What do you want to find out?' : 'Write a note…'}"></textarea>
-    <div class="st-resize" title="Drag to resize"></div>`;
+    <div class="st-resize" title="Drag to resize"></div>
+    <div class="st-fmt" role="dialog" aria-label="Sticky note format" hidden>
+      <div class="fmt-row"><span class="fmt-l">Size</span><div class="fmt-opts">
+        ${Object.entries(ST_SIZES).map(([k,v]) => `<button data-size="${k}" title="${v.label}">${k}</button>`).join('')}</div></div>
+      <div class="fmt-row"><span class="fmt-l">Shape</span><div class="fmt-opts">
+        ${Object.entries(ST_SHAPES).map(([k,v]) => `<button data-shape="${k}" title="${v.label}" aria-label="${v.label}">${v.icon}</button>`).join('')}</div></div>
+      <div class="fmt-row"><span class="fmt-l">Text size</span><div class="fmt-text">
+        <button data-fs="-1" title="Smaller text" aria-label="Smaller text">A−</button>
+        <input type="range" class="fs-range" min="${ST_FS_MIN}" max="${ST_FS_MAX}" step="1" aria-label="Text size" id="fs-${a.id}">
+        <button data-fs="1" title="Larger text" aria-label="Larger text">A+</button>
+        <span class="fsv"></span></div></div>
+    </div>`;
   return s;
 }
+const ST_SIZES = { S:{ w:0.2, h:0.16, label:'Small' }, M:{ w:0.3, h:0.24, label:'Medium' }, L:{ w:0.42, h:0.36, label:'Large' }, XL:{ w:0.58, h:0.5, label:'Extra large' } };
+const ST_SHAPES = {
+  folded:{ label:'Note with folded corner', icon:'<svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M3 2h14v8l-4 4H3z"/><path d="M13 14v-4h4"/></svg>' },
+  square:{ label:'Square corners', icon:'<svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="2" width="14" height="12"/></svg>' },
+  rounded:{ label:'Rounded', icon:'<svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="2" width="14" height="12" rx="4"/></svg>' },
+  circle:{ label:'Circle', icon:'<svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="8" r="6.5"/></svg>' },
+};
+const ST_FS_MIN = 9, ST_FS_MAX = 32, ST_FS_DEFAULT = 13;
+const stFs = a => a.pin.fs || ST_FS_DEFAULT;
+// The panel floats above the page so the page edge never cuts it off
+function placeFormat(p, btn){
+  const r = btn.getBoundingClientRect(), pw = p.offsetWidth, ph = p.offsetHeight;
+  let top = r.bottom + 6; if(top + ph > innerHeight - 8) top = Math.max(8, r.top - ph - 6);
+  p.style.left = clamp(r.right - pw, 8, innerWidth - pw - 8) + 'px'; p.style.top = top + 'px';
+}
+function closeFormats(except){
+  $$('.st-fmt').forEach(p => { if(p !== except && !p.hidden){ p.hidden = true; p.closest('.sticky')?.querySelector('.st-fmtbtn')?.setAttribute('aria-expanded', 'false'); } });
+}
+document.addEventListener('pointerdown', e => {
+  const t = e.target.nodeType === 1 ? e.target : null;
+  if(!t?.closest('.st-fmt') && !t?.closest('.st-fmtbtn')) closeFormats();
+});
 function drawStickies(n){
   const P = S.pages[n]; if(!P) return; const layer = $('.stickies', P.sheet); if(!layer) return;
   const list = pageAnns(n).filter(onPage), keep = new Set(list.map(a => a.id));
   $$('.sticky', layer).forEach(s => { if(!keep.has(s.dataset.id)) s.remove(); });
-  const fs = clamp(13 * S.scale, 11, 17);
   for(const a of list){
     let s = $(`.sticky[data-id="${a.id}"]`, layer);
     if(!s){ s = makeSticky(a); layer.append(s); }
-    s.className = 'sticky tag-' + (a.tag || 'note') + (a.pin.min ? ' min' : '') + (a.id === S.active ? ' active' : '');
-    Object.assign(s.style, { left:a.pin.x * 100 + '%', top:a.pin.y * 100 + '%', width:a.pin.min ? '' : a.pin.w * 100 + '%', fontSize:fs + 'px' });
+    const shape = ST_SHAPES[a.pin.shape] ? a.pin.shape : 'folded', fs = stFs(a);
+    s.className = 'sticky tag-' + (a.tag || 'note') + ' shape-' + shape + (a.pin.min ? ' min' : '') + (a.id === S.active ? ' active' : '');
+    Object.assign(s.style, { left:a.pin.x * 100 + '%', top:a.pin.y * 100 + '%',
+      width:a.pin.min ? '' : a.pin.w * 100 + '%',
+      minHeight:a.pin.min || !a.pin.h || shape === 'circle' ? '' : a.pin.h * 100 + '%',
+      fontSize:Math.max(7, fs * S.scale) + 'px', padding:circlePad(a, P.W) });
     s.style.setProperty('--paper-c', STICKY[a.color] || STICKY.yellow);
     $('.tag', s).textContent = TAGS[a.tag || 'note'];
     const ta = $('textarea', s);
     if(document.activeElement !== ta && ta.value !== (a.note || '')) ta.value = a.note || '';
     if(!a.pin.min){ ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
+    // Keep the format panel in step with the note
+    const sizeKey = Object.keys(ST_SIZES).find(k => Math.abs(ST_SIZES[k].w - a.pin.w) < 0.005 && (shape === 'circle' || Math.abs(ST_SIZES[k].h - (a.pin.h || 0)) < 0.005));
+    $$('[data-size]', s).forEach(b => b.setAttribute('aria-pressed', b.dataset.size === sizeKey));
+    $$('[data-shape]', s).forEach(b => b.setAttribute('aria-pressed', b.dataset.shape === shape));
+    const range = $('.fs-range', s); if(document.activeElement !== range) range.value = fs;
+    $('.fsv', s).textContent = fs + ' pt';
+    $('[data-fs="-1"]', s).disabled = fs <= ST_FS_MIN; $('[data-fs="1"]', s).disabled = fs >= ST_FS_MAX;
   }
+}
+// A circle keeps its text inside the inscribed square, so its padding follows its own width
+function circlePad(a, pageW){
+  if(a.pin.shape !== 'circle' || a.pin.min) return '';
+  const d = a.pin.w * pageW, side = Math.round(d * 0.15);
+  return `${Math.round(d * 0.12)}px ${side}px ${Math.round(d * 0.12)}px`;
+}
+// After a size, shape or text change, slide the note back so the page edge does not cut it off
+function fitSticky(a, n){
+  const P = S.pages[n], s = P && $(`.sticky[data-id="${a.id}"]`, P.sheet); if(!s) return;
+  const h = s.offsetHeight / P.H, w = s.offsetWidth / P.W;
+  const x = clamp(a.pin.x, 0, Math.max(0, 1 - w)), y = clamp(a.pin.y, 0, Math.max(0, 1 - h));
+  if(x !== a.pin.x || y !== a.pin.y){ a.pin.x = x; a.pin.y = y; s.style.left = x * 100 + '%'; s.style.top = y * 100 + '%'; }
+}
+function setStickySize(a, k){
+  const v = ST_SIZES[k]; a.pin.w = v.w; a.pin.h = v.h;
+  a.pin.x = clamp(a.pin.x, 0, 1 - v.w); a.pin.y = clamp(a.pin.y, 0, Math.max(0, 1 - v.h));
 }
 function pinToPage(a){
   checkpoint();
@@ -737,11 +831,17 @@ function bindNotes(el, n){
   });
   el.addEventListener('input', e => {
     const a = noteOf(e.target); if(!a) return;
+    if(e.target.classList.contains('fs-range')){
+      if(!e.target.dataset.dirty){ checkpoint(); e.target.dataset.dirty = '1'; }
+      a.pin.fs = clamp(+e.target.value, ST_FS_MIN, ST_FS_MAX); drawStickies(n); fitSticky(a, n); save(); return;
+    }
+    if(e.target.tagName !== 'TEXTAREA') return;
     if(!e.target.dataset.dirty){ checkpoint(); e.target.dataset.dirty = '1'; }
     a.note = e.target.value; a.updatedAt = Date.now();
     if(a.pin){ e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; } else layoutCards(n);
     renderIndexSoon(); save();
   });
+  el.addEventListener('change', e => { if(e.target.classList.contains('fs-range')) e.target.dataset.dirty = ''; });
   el.addEventListener('focusout', e => {
     if(e.target.tagName !== 'TEXTAREA') return;
     const a = noteOf(e.target); if(!a || (a.note || '').trim()) return;
@@ -753,7 +853,21 @@ function bindNotes(el, n){
   el.addEventListener('click', e => {
     const a = noteOf(e.target); if(!a) return;
     const b = e.target.closest('button');
-    if(!b){ if(a.pin && e.target.closest('.st-head')) $(`#note-${a.id}`)?.focus({ preventScroll:true }); return; }
+    if(!b){
+      // Clicking the paper of a sticky puts the cursor in its text
+      if(a.pin && !e.target.closest('.st-fmt') && e.target.tagName !== 'TEXTAREA') $(`#note-${a.id}`)?.focus({ preventScroll:true });
+      return;
+    }
+    const st = b.closest('.sticky');
+    if(b.classList.contains('st-fmtbtn')){
+      const p = $('.st-fmt', st), open = p.hidden; closeFormats(p); p.hidden = !open; b.setAttribute('aria-expanded', open);
+      if(open) placeFormat(p, b);
+      if(open && S.active !== a.id){ const prev = S.active; S.active = a.id; refreshActive(prev); }
+      return;
+    }
+    if(b.dataset.size){ checkpoint(); setStickySize(a, b.dataset.size); drawStickies(n); fitSticky(a, n); save(); return; }
+    if(b.dataset.shape){ checkpoint(); a.pin.shape = b.dataset.shape; drawStickies(n); fitSticky(a, n); save(); return; }
+    if(b.dataset.fs){ checkpoint(); a.pin.fs = clamp(stFs(a) + (+b.dataset.fs), ST_FS_MIN, ST_FS_MAX); drawStickies(n); fitSticky(a, n); save(); return; }
     if(b.classList.contains('tag')){ checkpoint(); a.tag = TAG_ORDER[(TAG_ORDER.indexOf(a.tag || 'note') + 1) % 3]; refreshPage(n); renderIndex(); save(); }
     else if(b.classList.contains('pinbtn')) pinToPage(a);
     else if(b.classList.contains('st-dock')) dockToMargin(a);
@@ -875,11 +989,16 @@ function bindSheet(n){
     if(!rz && !(head && !e.target.closest('button'))) return;
     e.preventDefault(); try{ s.setPointerCapture(e.pointerId); }catch(err){}
     const r = pageEl.getBoundingClientRect(), x0 = e.clientX, y0 = e.clientY, p0 = { ...a.pin }, ta = $('textarea', s);
+    p0.h = s.offsetHeight / r.height;   // start from the height it has now, even if it was sized by its text
     let moved = false;
     const mv = ev => {
       const dx = (ev.clientX - x0) / r.width, dy = (ev.clientY - y0) / r.height;
       if(!moved){ if(Math.hypot(ev.clientX - x0, ev.clientY - y0) < 3) return; moved = true; checkpoint(); }
-      if(rz){ a.pin.w = clamp(p0.w + dx, 0.14, Math.min(0.9, 1 - p0.x)); s.style.width = a.pin.w * 100 + '%'; ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
+      if(rz){
+        a.pin.w = clamp(p0.w + dx, 0.1, Math.min(0.95, 1 - p0.x)); s.style.width = a.pin.w * 100 + '%'; s.style.padding = circlePad(a, P.W);
+        if(a.pin.shape !== 'circle'){ a.pin.h = clamp(p0.h + dy, 0.05, Math.max(0.05, 1 - p0.y)); s.style.minHeight = a.pin.h * 100 + '%'; }
+        ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px';
+      }
       else { a.pin.x = clamp(p0.x + dx, 0, 1 - (a.pin.min ? 0.04 : Math.min(a.pin.w, 0.98))); a.pin.y = clamp(p0.y + dy, 0, 0.97);
         s.style.left = a.pin.x * 100 + '%'; s.style.top = a.pin.y * 100 + '%'; }
     };
@@ -965,7 +1084,7 @@ document.addEventListener('pointerup', e => {
   if(S.tool !== 'select' || t?.closest('#float') || t?.closest('.card') || t?.closest('.sticky')) return;
   setTimeout(() => { const info = selectionInfo(); if(info) showSelMenu(info); else if(S.pending?.rects) hideFloat(); }, 10);
 });
-$('#scroller').addEventListener('scroll', () => { if(!$('#float').hidden) hideFloat(); }, { passive:true });
+$('#scroller').addEventListener('scroll', () => { if(!$('#float').hidden) hideFloat(); closeFormats(); }, { passive:true });
 
 /* ---------- Library and index ---------- */
 function renderFiles(){

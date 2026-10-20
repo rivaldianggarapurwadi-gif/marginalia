@@ -6,6 +6,7 @@ A desktop-first study workspace for PDFs. Open a lecture deck or paper, highligh
 - Highlight text in four colours; attach a Note, Question or Key concept to any selection
 - Area tool for notes on diagrams, plus a pen and eraser
 - Sticky notes placed right on the page: drag to move, resize, recolor, minimize, or send any margin note to the page and back
+- Sticky format panel (Aa): size presets S–XL plus free corner resize, four shapes (folded, square, rounded, circle) and text size from 9 to 32 pt
 - Per-page margins you can fold, resize, or write in directly; pages extend downward when notes overflow
 - Leader lines link every note to its anchor
 - Search and filter all annotations across files, then jump back to the source
