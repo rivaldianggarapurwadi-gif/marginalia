@@ -19,3 +19,18 @@ Then open http://localhost:3000.
 
 ## Deploy
 Deployed on Railway with `npm start` (no dependencies). Railway sets `PORT` automatically.
+
+## Mac app
+The `desktop/` folder wraps the same page in Electron so it runs as a normal Mac app, fully offline (pdf.js and jsPDF are bundled in `vendor/`). Notes are stored in `~/Library/Application Support/Marginalia`.
+
+```bash
+cd desktop
+npm install
+npm start          # run without packaging
+npm run dist       # build desktop/dist/mac-arm64/Marginalia.app
+```
+The build is unsigned. To install it locally, ad-hoc sign it and copy it to Applications:
+```bash
+codesign --force --deep -s - dist/mac-arm64/Marginalia.app
+ditto dist/mac-arm64/Marginalia.app /Applications/Marginalia.app
+```

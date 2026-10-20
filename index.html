@@ -286,12 +286,12 @@ body.clean .marks,body.clean .inklayer,body.clean .margin,body.clean .leaders,bo
 <div id="drop" class="drop" hidden>Drop a PDF to add it to your library</div>
 <div id="modal" class="modal" hidden></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/pdf.worker.min.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
 <script>
 'use strict';
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
 
 const COLORS = { yellow:'#FFE45C', green:'#A3E4A8', pink:'#FFB0CD', blue:'#A9D3FF' };
 const STROKE = { yellow:'#B89500', green:'#3E9B4F', pink:'#D24D7E', blue:'#3B7DD8' };

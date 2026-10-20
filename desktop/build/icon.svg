@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3B57D6"/>
+      <stop offset="1" stop-color="#2236A3"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <!-- original page -->
+  <rect x="210" y="230" width="380" height="520" rx="14" fill="#FFFFFF"/>
+  <rect x="250" y="290" width="220" height="26" rx="6" fill="#18202E"/>
+  <rect x="250" y="360" width="300" height="14" rx="7" fill="#C9D0DC"/>
+  <rect x="244" y="398" width="250" height="34" rx="4" fill="#FFE45C"/>
+  <rect x="250" y="408" width="236" height="14" rx="7" fill="#8A93A3"/>
+  <rect x="250" y="456" width="280" height="14" rx="7" fill="#C9D0DC"/>
+  <rect x="250" y="494" width="300" height="14" rx="7" fill="#C9D0DC"/>
+  <rect x="250" y="532" width="200" height="14" rx="7" fill="#C9D0DC"/>
+  <rect x="250" y="590" width="300" height="110" rx="8" fill="#E2E7FA"/>
+  <!-- margin that grows -->
+  <rect x="590" y="230" width="224" height="600" rx="14" fill="#F2F4FA"/>
+  <rect x="210" y="750" width="380" height="80" rx="0" fill="#F2F4FA"/>
+  <rect x="210" y="736" width="380" height="14" fill="#FFFFFF"/>
+  <path d="M494 415 C 560 415, 560 330, 624 330" fill="none" stroke="#FFE45C" stroke-width="10" stroke-linecap="round"/>
+  <rect x="612" y="300" width="182" height="150" rx="16" fill="#FFFFFF" stroke="#D2D8E1" stroke-width="4"/>
+  <rect x="634" y="326" width="70" height="20" rx="10" fill="#FBE8DE"/>
+  <rect x="634" y="364" width="138" height="12" rx="6" fill="#5A6476"/>
+  <rect x="634" y="392" width="110" height="12" rx="6" fill="#5A6476"/>
+  <rect x="612" y="476" width="182" height="120" rx="16" fill="#FFFFFF" stroke="#D2D8E1" stroke-width="4"/>
+  <rect x="634" y="502" width="70" height="20" rx="10" fill="#DAF2EE"/>
+  <rect x="634" y="540" width="130" height="12" rx="6" fill="#5A6476"/>
+  <path d="M230 790 H 570 M230 812 H 570" stroke="#D2D8E1" stroke-width="4"/>
+</svg>

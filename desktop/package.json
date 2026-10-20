@@ -1,0 +1,30 @@
+{
+  "name": "marginalia-desktop",
+  "productName": "Marginalia",
+  "version": "0.1.0",
+  "description": "Marginalia for macOS: highlight PDFs, anchor notes, and let the margins grow.",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "copy-app": "node scripts/copy-app.js",
+    "start": "npm run copy-app && electron .",
+    "dist": "npm run copy-app && electron-builder --mac --dir",
+    "dist:dmg": "npm run copy-app && electron-builder --mac dmg"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.marginalia.desktop",
+    "productName": "Marginalia",
+    "files": ["main.js", "app/**/*"],
+    "directories": { "output": "dist", "buildResources": "build" },
+    "mac": {
+      "category": "public.app-category.education",
+      "icon": "build/icon.png",
+      "target": ["dir"],
+      "identity": null
+    }
+  }
+}
