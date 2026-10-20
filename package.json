@@ -1,0 +1,9 @@
+{
+  "name": "marginalia",
+  "version": "0.1.0",
+  "description": "PDF study workspace: highlight, anchor notes to passages, and let the margins grow to fit your notes.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}

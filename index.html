@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Marginalia: highlight PDFs, anchor notes to passages, and let the margins grow to fit what you write.">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Marginalia</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: library rail on the left | reading desk where every page carries its own expandable margin */
+:root{
+  --desk:#E3E7ED; --surface:#F5F6F8; --raised:#FFFFFF; --fg:#18202E; --muted:#5A6476; --line:#D2D8E1;
+  --accent:#2D47C4; --accent-ink:#FFFFFF; --accent-soft:#E2E7FA;
+  --paper:#FCFCFA; --rule:#E6E9EF;
+  --q:#B4461A; --q-soft:#FBE8DE; --key:#0E7466; --key-soft:#DAF2EE; --note:#2D47C4; --note-soft:#E2E7FA;
+  --shadow:0 1px 2px rgba(20,30,50,.08),0 8px 22px rgba(20,30,50,.09);
+  --f-display:'Literata',Georgia,'Times New Roman',serif;
+  --f-ui:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --f-mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --desk:#101318; --surface:#161A21; --raised:#1E232C; --fg:#E5E9F0; --muted:#9AA4B5; --line:#2B313C;
+  --accent:#93A6FF; --accent-ink:#0E1430; --accent-soft:#252D4D;
+  --paper:#1A1E26; --rule:#252A34;
+  --q:#F2A27B; --q-soft:#3A261C; --key:#6FD3C2; --key-soft:#15322D; --note:#93A6FF; --note-soft:#252D4D;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 26px rgba(0,0,0,.38); color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --desk:#101318; --surface:#161A21; --raised:#1E232C; --fg:#E5E9F0; --muted:#9AA4B5; --line:#2B313C;
+  --accent:#93A6FF; --accent-ink:#0E1430; --accent-soft:#252D4D;
+  --paper:#1A1E26; --rule:#252A34;
+  --q:#F2A27B; --q-soft:#3A261C; --key:#6FD3C2; --key-soft:#15322D; --note:#93A6FF; --note-soft:#252D4D;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 26px rgba(0,0,0,.38); color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--desk);color:var(--fg);font-family:var(--f-ui);font-size:14px;line-height:1.45}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+.app{height:100%;display:grid;grid-template-columns:292px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+.topbar{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding-block:10px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  background:var(--surface);border-bottom:1px solid var(--line);min-width:0}
+.brand{font-family:var(--f-display);font-size:20px;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+.brand i{font-style:italic;font-weight:400;color:var(--accent)}
+.docmeta{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1;padding-left:14px;border-left:1px solid var(--line)}
+#docTitle{font-family:var(--f-display);font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#docPages{color:var(--muted);font-size:11px;white-space:nowrap}
+.status{color:var(--muted);font-size:11px;white-space:nowrap}
+.iconbtn{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:8px;border:1px solid transparent;background:none}
+.iconbtn:hover{background:var(--accent-soft)}
+.iconbtn svg{width:18px;height:18px}
+.only-narrow{display:none}
+
+/* Library rail */
+.side{background:var(--surface);border-right:1px solid var(--line);overflow:auto;display:flex;flex-direction:column;gap:22px;
+  padding-block:18px 24px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:16px;min-height:0}
+.sec-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.sec-head h2{margin:0;font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--raised);border-radius:8px;padding:6px 10px;font-weight:500;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.small{padding:4px 9px;font-size:12px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.files ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.file{width:100%;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;text-align:left;padding:8px 10px;border-radius:8px;border:0;background:none}
+.file:hover{background:var(--accent-soft)}
+.file[aria-current="true"]{background:var(--accent-soft);font-weight:600}
+.file svg{width:16px;height:16px;color:var(--muted)}
+.file .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file .count{font-size:11px;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--raised)}
+.seg button{border:0;background:none;padding:4px 9px;font-size:12px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--fg);font-weight:600}
+#search{width:100%;border:1px solid var(--line);background:var(--raised);border-radius:8px;padding:8px 10px;margin-bottom:8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.chip{border:1px solid var(--line);background:var(--raised);border-radius:999px;padding:3px 10px;font-size:12px;display:inline-flex;gap:6px;align-items:center}
+.chip[aria-pressed="true"]{background:var(--fg);color:var(--surface);border-color:var(--fg)}
+.chip .n{font-family:var(--f-mono);font-size:10px;opacity:.75}
+.indexlist{display:flex;flex-direction:column;gap:4px}
+.indexlist h3{font-family:var(--f-display);font-size:13px;font-weight:600;margin:10px 0 4px}
+.item{display:flex;flex-direction:column;gap:3px;text-align:left;width:100%;border:1px solid transparent;background:none;border-radius:8px;padding:8px 10px}
+.item:hover{background:var(--raised);border-color:var(--line)}
+.item.active{background:var(--raised);border-color:var(--accent)}
+.item-meta{display:flex;align-items:center;gap:6px;font-family:var(--f-mono);font-size:10.5px;color:var(--muted)}
+.swatch{width:9px;height:9px;border-radius:2px;flex:none}
+.item-quote{font-family:var(--f-display);font-size:12.5px;font-style:italic;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.item-note{font-size:13px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.item mark{background:#FFE45C;color:#18202E;border-radius:2px}
+.empty{color:var(--muted);font-size:13px;padding:8px 10px}
+.help{margin-top:auto;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px;display:grid;gap:6px}
+.help b{color:var(--fg);font-weight:600}
+kbd{font-family:var(--f-mono);font-size:10.5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px;background:var(--raised)}
+
+/* Reader */
+.reader{display:flex;flex-direction:column;min-width:0;min-height:0}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding-block:8px;
+  padding-left:16px;padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line);background:var(--surface)}
+.group{display:inline-flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--line);border-radius:10px;background:var(--raised)}
+.tool{display:inline-flex;align-items:center;gap:6px;border:0;background:none;border-radius:8px;padding:5px 9px;font-size:13px;color:var(--muted)}
+.tool svg{width:16px;height:16px}
+.tool:hover{color:var(--fg)}
+.tool[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.tool:disabled{opacity:.35;cursor:default}
+.dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--raised);box-shadow:0 0 0 1px var(--line);padding:0}
+.dot[aria-pressed="true"]{box-shadow:0 0 0 2px var(--fg)}
+.zoomval{min-width:44px;text-align:center;font-size:11px;color:var(--muted)}
+.spacer{flex:1}
+.scroller{flex:1;overflow:auto;position:relative;padding-block:28px 80px;padding-left:24px;padding-right:max(24px,env(safe-area-inset-right,0px))}
+.sheets{width:max-content;margin-inline:auto;display:flex;flex-direction:column;gap:30px}
+.loading{color:var(--muted);padding:40px;text-align:center}
+
+.sheet{display:flex;position:relative;align-items:stretch;background:var(--paper);box-shadow:var(--shadow);border-radius:3px}
+.pagecol{display:flex;flex-direction:column;flex:none}
+.page{position:relative;background:#fff;overflow:hidden;flex:none}
+.page canvas{display:block;position:absolute;inset:0}
+.marks,.inklayer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.marks{z-index:1;mix-blend-mode:multiply}
+.inklayer{z-index:3}
+.hl.active{stroke:#2D47C4;stroke-width:1.5}
+.area.active{stroke-width:2.5}
+.tooloverlay{position:absolute;inset:0;z-index:5;display:none;touch-action:none}
+body[data-tool="area"] .tooloverlay,body[data-tool="pen"] .tooloverlay,body[data-tool="eraser"] .tooloverlay{display:block}
+body[data-tool="area"] .tooloverlay,body[data-tool="pen"] .tooloverlay{cursor:crosshair}
+body[data-tool="eraser"] .tooloverlay{cursor:cell}
+.area-draft{position:absolute;border:1.5px dashed #2D47C4;background:rgba(45,71,196,.08);pointer-events:none}
+.pageno{position:absolute;right:8px;bottom:6px;z-index:4;font-family:var(--f-mono);font-size:10px;color:#7A8394;background:rgba(255,255,255,.85);padding:1px 5px;border-radius:4px;pointer-events:none}
+.extension{flex:1;position:relative;border-top:1px dashed var(--line);
+  background:repeating-linear-gradient(to bottom,transparent 0 27px,var(--rule) 27px 28px),var(--paper)}
+.extension span{position:absolute;top:8px;left:12px;font-family:var(--f-mono);font-size:10px;letter-spacing:.04em;color:var(--muted)}
+
+/* pdf.js text layer (3.x) */
+.textLayer{position:absolute;inset:0;overflow:hidden;line-height:1;-webkit-text-size-adjust:none;text-size-adjust:none;forced-color-adjust:none;transform-origin:0 0;z-index:2}
+.textLayer :is(span,br){color:transparent;position:absolute;white-space:pre;cursor:text;transform-origin:0% 0%}
+.textLayer span.markedContent{top:0;height:0}
+.textLayer ::selection{background:rgba(45,71,196,.28)}
+.textLayer br::selection{background:transparent}
+.textLayer .endOfContent{display:block;position:absolute;inset:100% 0 0;z-index:-1;cursor:default;user-select:none}
+.textLayer.selecting .endOfContent{top:0}
+
+/* Margin */
+.margin{position:relative;flex:none;border-left:1px solid var(--line);background:var(--paper)}
+.margin.collapsed{background:var(--surface)}
+.cards{position:absolute;inset:0}
+.margin.collapsed .cards,.margin.collapsed .grip,.margin.collapsed .fold{display:none}
+.margin:not(.collapsed) .strip{display:none}
+.strip{position:absolute;inset:0}
+.open-margin{position:absolute;top:10px;left:50%;transform:translateX(-50%);border:1px solid var(--line);background:var(--raised);border-radius:8px;padding:8px 4px;
+  writing-mode:vertical-rl;font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--muted);display:flex;align-items:center;gap:6px}
+.open-margin:hover{color:var(--accent);border-color:var(--accent)}
+.pin{position:absolute;left:50%;width:12px;height:12px;margin-left:-6px;border-radius:50%;border:2px solid var(--surface);padding:0}
+.fold{position:absolute;top:6px;right:8px;z-index:3;border:0;background:none;color:var(--muted);font-size:11px;padding:3px 6px;border-radius:6px}
+.fold:hover{background:var(--accent-soft);color:var(--fg)}
+.grip{position:absolute;top:0;bottom:0;right:-6px;width:12px;cursor:col-resize;z-index:6;touch-action:none}
+.grip::after{content:"";position:absolute;top:0;bottom:0;left:5px;width:2px;background:transparent;transition:background .15s}
+.grip:hover::after,.grip.dragging::after{background:var(--accent)}
+.marginhint{position:absolute;left:12px;right:14px;bottom:10px;font-size:11px;color:var(--muted);text-align:center;pointer-events:none}
+.leaders{position:absolute;left:0;top:0;pointer-events:none;z-index:4;overflow:visible}
+.lead{fill:none;stroke:var(--muted);stroke-width:1;opacity:.5}
+.lead.across{stroke-dasharray:3 3}
+.lead.act{stroke:var(--accent);opacity:1;stroke-width:1.5}
+.lead-dot{fill:var(--muted);opacity:.6}
+.lead-dot.act{fill:var(--accent);opacity:1}
+
+.card{position:absolute;left:14px;right:16px;background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:8px 10px 6px;
+  box-shadow:0 1px 2px rgba(20,30,50,.06);transition:top .18s ease,box-shadow .15s}
+.card.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),0 6px 18px rgba(20,30,50,.12)}
+.card.flash{animation:flash 1.2s ease}
+@keyframes flash{0%,40%{box-shadow:0 0 0 4px var(--accent-soft),0 0 0 1px var(--accent)}100%{box-shadow:0 1px 2px rgba(20,30,50,.06)}}
+.card-head{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.tag{border:0;border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:600;letter-spacing:.03em}
+.tag-note .tag{background:var(--note-soft);color:var(--note)}
+.tag-question .tag{background:var(--q-soft);color:var(--q)}
+.tag-key .tag{background:var(--key-soft);color:var(--key)}
+.card .meta{font-family:var(--f-mono);font-size:10px;color:var(--muted);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .del{border:0;background:none;color:var(--muted);border-radius:6px;width:22px;height:22px;display:grid;place-items:center}
+.card .del:hover{background:var(--q-soft);color:var(--q)}
+.card .del svg{width:13px;height:13px}
+.card blockquote{margin:0 0 4px;font-family:var(--f-display);font-style:italic;font-size:12px;line-height:1.4;color:var(--muted);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card textarea{display:block;width:100%;border:0;background:none;resize:none;padding:2px 0 4px;font-size:13.5px;line-height:1.45;overflow:hidden;min-height:24px}
+.card textarea:focus{outline:none}
+.card textarea::placeholder{color:var(--muted)}
+.ex{font-family:var(--f-mono);font-size:9.5px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+
+body.clean .marks,body.clean .inklayer,body.clean .margin,body.clean .leaders,body.clean .extension{display:none}
+
+/* Floating selection menu */
+.float{position:fixed;z-index:60;display:flex;align-items:center;gap:4px;padding:5px;background:var(--fg);color:var(--surface);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.float .dot{border-color:var(--fg);box-shadow:0 0 0 1px rgba(255,255,255,.35)}
+.float .sep{width:1px;height:20px;background:rgba(255,255,255,.2);margin:0 3px}
+.float .fbtn{border:0;background:none;color:inherit;padding:5px 9px;border-radius:7px;font-size:13px;font-weight:500;white-space:nowrap}
+.float .fbtn:hover{background:rgba(255,255,255,.14)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:70;background:var(--fg);color:var(--surface);
+  padding:9px 10px 9px 14px;border-radius:10px;display:flex;gap:12px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:calc(100% - 32px)}
+.toast button{border:0;background:rgba(255,255,255,.14);color:inherit;border-radius:7px;padding:4px 10px;font-weight:600}
+.drop{position:fixed;inset:0;z-index:80;background:rgba(45,71,196,.12);border:3px dashed var(--accent);display:grid;place-items:center;font-family:var(--f-display);font-size:22px;color:var(--accent);pointer-events:none}
+.modal{position:fixed;inset:0;z-index:90;background:rgba(10,14,22,.45);display:grid;place-items:center;padding:16px}
+.modal-box{background:var(--raised);border-radius:12px;padding:16px;width:min(560px,100%);display:grid;gap:10px;box-shadow:var(--shadow)}
+.modal-box textarea{width:100%;height:260px;font-family:var(--f-mono);font-size:12px;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--surface)}
+.modal-box h2{margin:0;font-family:var(--f-display);font-size:17px}
+.modal-box p{margin:0;color:var(--muted)}
+.backdrop{display:none}
+
+@media (max-width:820px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .only-narrow{display:inline-grid}
+  .side{position:fixed;left:0;top:0;bottom:0;width:min(340px,88vw);z-index:50;transform:translateX(-102%);transition:transform .2s ease;box-shadow:var(--shadow);
+    padding-top:calc(18px + env(safe-area-inset-top,0px))}
+  .side.open{transform:none}
+  .backdrop.show{display:block;position:fixed;inset:0;z-index:45;background:rgba(10,14,22,.35)}
+  .tool .lbl{display:none}
+  .status{display:none}
+  .scroller{padding-left:16px;padding-right:max(16px,env(safe-area-inset-right,0px));padding-top:16px}
+  .sheets{margin-inline:0}
+}
+@media (prefers-reduced-motion:reduce){.card,.side,.grip::after{transition:none}.card.flash{animation:none}}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="topbar">
+    <button id="libBtn" class="iconbtn only-narrow" aria-label="Show library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
+    <div class="brand">Margin<i>alia</i></div>
+    <div class="docmeta"><span id="docTitle">Opening…</span><span id="docPages" class="mono"></span></div>
+    <span id="status" class="status mono"></span>
+  </header>
+
+  <aside class="side" id="side" aria-label="Library">
+    <section class="files">
+      <div class="sec-head"><h2>Files</h2><label class="btn small" for="fileInput">Add PDF</label></div>
+      <input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden>
+      <ul id="fileList"></ul>
+    </section>
+    <section class="index">
+      <div class="sec-head"><h2>Annotations</h2>
+        <div class="seg" id="scope"><button data-scope="doc" aria-pressed="false">This file</button><button data-scope="all" aria-pressed="true">All files</button></div>
+      </div>
+      <input id="search" type="search" placeholder="Search notes and highlights" autocomplete="off">
+      <div class="chips" id="chips"></div>
+      <div id="indexList" class="indexlist"></div>
+    </section>
+    <div class="help">
+      <div><b>Select text</b> to highlight it or attach a note.</div>
+      <div><b>Area</b> marks a diagram or region. <b>Pen</b> draws on the page.</div>
+      <div><b>Drag a margin's edge</b> to make room. Double-click an empty margin to write there.</div>
+      <div>The original PDF is never changed. <kbd>⌘Z</kbd> undoes.</div>
+    </div>
+  </aside>
+  <div class="backdrop" id="backdrop"></div>
+
+  <main class="reader">
+    <div class="toolbar">
+      <div class="group" role="toolbar" aria-label="Tools">
+        <button class="tool" data-tool="select" aria-pressed="true" title="Select text (V)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 4h6M9 20h6M12 4v16"/></svg><span class="lbl">Text</span></button>
+        <button class="tool" data-tool="area" aria-pressed="false" title="Mark an area (A)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="3 2.5"><rect x="4" y="5" width="16" height="14" rx="1.5"/></svg><span class="lbl">Area</span></button>
+        <button class="tool" data-tool="pen" aria-pressed="false" title="Pen (P)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20l1-5L16 4l4 4L9 19z"/><path d="M14 6l4 4"/></svg><span class="lbl">Pen</span></button>
+        <button class="tool" data-tool="eraser" aria-pressed="false" title="Erase pen strokes (E)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M8 20h12M5 15l9-9 5 5-8 8H8z"/></svg><span class="lbl">Erase</span></button>
+      </div>
+      <div class="group" id="colors" aria-label="Highlight color"></div>
+      <div class="group">
+        <button class="tool" id="undo" title="Undo (⌘Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 010 12h-2" transform="translate(0 -6)"/></svg></button>
+        <button class="tool" id="redo" title="Redo (⇧⌘Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 000 12h2" transform="translate(0 -6)"/></svg></button>
+      </div>
+      <div class="group">
+        <button class="tool" id="zoomOut" aria-label="Zoom out">−</button>
+        <span class="zoomval mono" id="zoomVal">100%</span>
+        <button class="tool" id="zoomIn" aria-label="Zoom in">+</button>
+      </div>
+      <span class="spacer"></span>
+      <button class="tool" id="cleanBtn" aria-pressed="false" title="Show the original page without annotations">Original only</button>
+      <button class="btn small" id="copyMd">Copy notes</button>
+    </div>
+    <div class="scroller" id="scroller"><div id="sheets" class="sheets"><div class="loading">Opening the sample lecture…</div></div></div>
+  </main>
+</div>
+<div id="float" class="float" hidden></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<div id="drop" class="drop" hidden>Drop a PDF to add it to your library</div>
+<div id="modal" class="modal" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+'use strict';
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const COLORS = { yellow:'#FFE45C', green:'#A3E4A8', pink:'#FFB0CD', blue:'#A9D3FF' };
+const STROKE = { yellow:'#B89500', green:'#3E9B4F', pink:'#D24D7E', blue:'#3B7DD8' };
+const TAGS = { note:'Note', question:'Question', key:'Key concept' };
+const TAG_ORDER = ['note','question','key'];
+const TAG_COLOR = { note:'var(--note)', question:'var(--q)', key:'var(--key)' };
+const DEFAULT_MARGIN = 300, STRIP = 36, MIN_M = 200, MAX_M = 640;
+
+const S = { docs:[], anns:[], margins:{}, current:null, pdf:null, pages:[], scale:1, gen:0,
+  tool:'select', color:'yellow', ink:'#D9480F', clean:false, filter:'all', scope:'all', query:'', active:null, pending:null };
+
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const ICON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const ICON_DOC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>';
+
+/* ---------- Storage (IndexedDB, on this device only) ---------- */
+const DB = {
+  db:null,
+  async open(){
+    try{
+      this.db = await new Promise((res, rej) => {
+        const r = indexedDB.open('marginalia', 1);
+        r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('docs', {keyPath:'id'}); d.createObjectStore('kv'); };
+        r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+      });
+    }catch(e){ this.db = null; }
+  },
+  tx(store, mode, fn){
+    if(!this.db) return Promise.resolve(null);
+    return new Promise(res => {
+      try{
+        const t = this.db.transaction(store, mode); const req = fn(t.objectStore(store));
+        t.oncomplete = () => res(req ? req.result : null); t.onerror = () => res(null); t.onabort = () => res(null);
+      }catch(e){ res(null); }
+    });
+  },
+  allDocs(){ return this.tx('docs','readonly', s => s.getAll()); },
+  putDoc(d){ return this.tx('docs','readwrite', s => s.put(d)); },
+  get(k){ return this.tx('kv','readonly', s => s.get(k)); },
+  set(k,v){ return this.tx('kv','readwrite', s => s.put(v,k)); },
+};
+let saveTimer;
+function setStatus(t){ $('#status').textContent = t; }
+function save(){
+  setStatus('Saving…'); clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    await DB.set('anns', S.anns); await DB.set('margins', S.margins);
+    setStatus(DB.db ? 'Saved on this device' : 'Storage blocked: notes last until this tab closes');
+  }, 350);
+}
+
+/* ---------- Undo / redo ---------- */
+const Hist = { past:[], future:[] };
+const snap = () => JSON.stringify({ anns:S.anns, margins:S.margins });
+function checkpoint(){ Hist.past.push(snap()); if(Hist.past.length > 200) Hist.past.shift(); Hist.future = []; updHist(); }
+function restore(json){ const o = JSON.parse(json); S.anns = o.anns; S.margins = o.margins; refreshAll(); save(); }
+function undo(){ if(!Hist.past.length) return; Hist.future.push(snap()); restore(Hist.past.pop()); updHist(); }
+function redo(){ if(!Hist.future.length) return; Hist.past.push(snap()); restore(Hist.future.pop()); updHist(); }
+function updHist(){ $('#undo').disabled = !Hist.past.length; $('#redo').disabled = !Hist.future.length; }
+
+/* ---------- Sample lecture (generated, then treated like any imported PDF) ---------- */
+function makeSample(){
+  const { jsPDF } = window.jspdf; const W = 720, H = 405;
+  const doc = new jsPDF({ unit:'pt', format:[W,H], orientation:'landscape' });
+  const A = {}; let pg = 1;
+  const INK = [27,34,48], GREY = [110,118,132], BLUE = [64,104,196];
+  const font = (size, style='normal', col=INK) => { doc.setFont('helvetica', style); doc.setFontSize(size); doc.setTextColor(...col); };
+  const t = (s,x,y,size,style,col) => { font(size,style,col); doc.text(s,x,y); };
+  const mark = (key, line, phrase, x, y, size, style='normal') => {
+    font(size, style); const i = line.indexOf(phrase);
+    const x0 = x + doc.getTextWidth(line.slice(0,i)), w = doc.getTextWidth(phrase);
+    A[key] = { page:pg, rect:[x0/W, (y - size*0.8)/H, w/W, size*1.05/H] };
+  };
+  const header = (title, n) => {
+    t('BIOL 110  |  Lecture 02: Cell Biology', 40, 34, 9, 'normal', GREY); t(n + ' / 4', W-62, 34, 9, 'normal', GREY);
+    doc.setDrawColor(210,214,222); doc.setLineWidth(0.6); doc.line(40,44,W-40,44); t(title, 40, 84, 24, 'bold');
+  };
+  const bullet = (s, x, y, size=14) => { doc.setFillColor(...INK); doc.circle(x+3, y-size*0.32, 2, 'F'); t(s, x+14, y, size); };
+
+  // 1
+  header('The Plasma Membrane', 1);
+  const l1 = ['Every cell is enclosed by a plasma membrane 7 to 10 nm thick.',
+    'It is a selectively permeable barrier that controls what enters and leaves.',
+    'Its structure is described by the fluid mosaic model (Singer and Nicolson, 1972).',
+    'Proteins account for roughly half of the membrane by mass.'];
+  l1.forEach((s,i) => bullet(s, 40, 128 + i*30));
+  mark('perm', l1[1], 'selectively permeable barrier', 54, 158, 14);
+  mark('mosaic', l1[2], 'fluid mosaic model', 54, 188, 14);
+  doc.setFillColor(237,241,249); doc.roundedRect(40, 262, 640, 104, 6, 6, 'F');
+  t('By the end of this lecture you should be able to:', 56, 288, 12, 'bold');
+  ['1.  Explain why phospholipids form a bilayer in water.','2.  Predict which molecules cross the membrane without help.','3.  Compare passive and active transport.']
+    .forEach((s,i) => t(s, 56, 312 + i*21, 12));
+
+  // 2
+  doc.addPage([W,H], 'landscape'); pg = 2; header('Phospholipid Bilayer', 2);
+  const l2 = [['Each phospholipid has a polar head and two', 'nonpolar fatty acid tails.'],
+    ['In water, hydrophilic heads face the aqueous', 'environment; hydrophobic tails face inward.'],
+    ['Small nonpolar molecules such as O2 and CO2', 'diffuse straight through the bilayer.'],
+    ['Ions and large polar molecules are blocked', 'by the hydrophobic core.']];
+  l2.forEach((pair,i) => { const y = 128 + i*52; bullet(pair[0], 40, y, 13); t(pair[1], 54, y+19, 13); });
+  mark('heads', l2[1][0], 'hydrophilic heads face the aqueous', 54, 180, 13);
+  mark('blocked', l2[3][0], 'Ions and large polar molecules are blocked', 54, 284, 13);
+  t('Extracellular fluid', 500, 124, 10, 'italic', GREY);
+  doc.setDrawColor(120,128,142); doc.setLineWidth(1.1);
+  for(let x = 424; x <= 668; x += 18){
+    doc.line(x-3,177,x-3,216); doc.line(x+3,177,x+3,216);
+    doc.line(x-3,234,x-3,273); doc.line(x+3,234,x+3,273);
+  }
+  doc.setFillColor(...BLUE);
+  for(let x = 424; x <= 668; x += 18){ doc.circle(x,170,7,'F'); doc.circle(x,280,7,'F'); }
+  t('Hydrophobic core', 510, 229, 10, 'italic', GREY);
+  t('Cytoplasm', 518, 312, 10, 'italic', GREY);
+  t('heads', 680, 173, 9, 'normal', GREY); t('tails', 680, 203, 9, 'normal', GREY);
+  A.diagram = { page:2, rect:[408/W, 156/H, 270/W, 136/H] };
+
+  // 3
+  doc.addPage([W,H], 'landscape'); pg = 3; header('Membrane Transport', 3);
+  t('Simple diffusion', 40, 126, 14, 'bold'); t('Moves solutes down their concentration gradient. No protein is needed.', 40, 146, 13);
+  t('Facilitated diffusion', 40, 186, 14, 'bold');
+  const l3b = 'Uses channel or carrier proteins, but is still passive (no energy input).'; t(l3b, 40, 206, 13);
+  mark('carrier', l3b, 'channel or carrier proteins', 40, 206, 13);
+  t('Active transport', 40, 246, 14, 'bold');
+  const l3c = 'Moves solutes against their gradient and requires ATP.'; t(l3c, 40, 266, 13);
+  mark('atp', l3c, 'requires ATP', 40, 266, 13);
+  doc.setFillColor(237,241,249); doc.roundedRect(40, 298, 640, 62, 6, 6, 'F');
+  t('Example', 56, 322, 11, 'bold', GREY);
+  const l3d = 'The Na+/K+ pump moves 3 Na+ out and 2 K+ in for every ATP it uses.'; t(l3d, 56, 344, 13);
+  mark('pump', l3d, '3 Na+ out and 2 K+ in', 56, 344, 13);
+
+  // 4
+  doc.addPage([W,H], 'landscape'); pg = 4; header('Review Questions', 4);
+  const l4 = ['1.  Why do phospholipids form a bilayer instead of a single layer in water?',
+    '2.  Which crosses the membrane faster, O2 or Na+? Explain.',
+    '3.  A cell is poisoned so it cannot make ATP. Which transport stops first?',
+    '4.  Draw the Na+/K+ pump and label the direction each ion moves.'];
+  l4.forEach((s,i) => t(s, 40, 134 + i*42, 14));
+  mark('q3', l4[2], 'cannot make ATP', 40, 218, 14);
+
+  return { bytes: doc.output('arraybuffer'), A };
+}
+function ellipse([x,y,w,h]){
+  const cx = x + w/2, cy = y + h/2, rx = w/2 + 0.014, ry = h/2 + 0.022, pts = [];
+  for(let i = 0; i <= 44; i++){ const t = -0.4 + i/44 * Math.PI * 2.15, wob = 1 + Math.sin(i*1.7)*0.02; pts.push([cx + Math.cos(t)*rx*wob, cy + Math.sin(t)*ry*wob]); }
+  return pts;
+}
+function seedAnns(docId, A){
+  const now = Date.now(); let k = 0;
+  const mk = o => ({ id:uid(), docId, createdAt:now + k++, updatedAt:now, example:true, color:'yellow', note:null, tag:null, ...o });
+  return [
+    mk({ kind:'ink', page:1, points:ellipse(A.perm.rect), color:'#D9480F', width:2 }),
+    mk({ kind:'text', page:1, rects:[A.perm.rect], quote:'selectively permeable barrier', color:'yellow', tag:'key', note:'Water, O2 and CO2 pass freely. Ions and sugars need a protein to get through.' }),
+    mk({ kind:'text', page:1, rects:[A.mosaic.rect], quote:'fluid mosaic model', color:'green' }),
+    mk({ kind:'text', page:2, rects:[A.heads.rect], quote:'hydrophilic heads face the aqueous', color:'yellow', tag:'note', note:'Heads out, tails in. The tails hide from water on both sides of the membrane.' }),
+    mk({ kind:'area', page:2, rects:[A.diagram.rect], quote:null, color:'blue', tag:'question', note:"Why can't ions slip through the gaps between the tails?" }),
+    mk({ kind:'text', page:2, rects:[A.blocked.rect], quote:'Ions and large polar molecules are blocked', color:'pink' }),
+    mk({ kind:'text', page:3, rects:[A.carrier.rect], quote:'channel or carrier proteins', color:'blue', tag:'note', note:'Channel: a pore that is open or gated. Carrier: changes shape for each molecule it moves (GLUT1 carries glucose).' }),
+    mk({ kind:'text', page:3, rects:[A.atp.rect], quote:'requires ATP', color:'yellow', tag:'key', note:'Only active transport costs energy. Both kinds of diffusion are passive.' }),
+    mk({ kind:'text', page:3, rects:[A.pump.rect], quote:'3 Na+ out and 2 K+ in', color:'green', tag:'note', note:'Net +1 charge leaves per cycle, so the pump helps keep the inside of the cell negative.' }),
+    mk({ kind:'margin', page:3, y:0.62, tag:'question', note:'Exam tip from the TA: be ready to fill in a table comparing all three types (energy? protein? direction?).' }),
+    mk({ kind:'text', page:4, rects:[A.q3.rect], quote:'cannot make ATP', color:'pink', tag:'question', note:'Na+/K+ pump stops first. Does diffusion keep going until the gradients run down?' }),
+  ];
+}
+
+/* ---------- Helpers on annotations ---------- */
+const docAnns = (docId) => S.anns.filter(a => a.docId === docId);
+const pageAnns = (n) => S.anns.filter(a => a.docId === S.current && a.page === n);
+const hasCard = a => a.kind === 'margin' || ((a.kind === 'text' || a.kind === 'area') && a.note != null);
+function box(a){
+  if(a.kind === 'margin') return { x:1, y:a.y, w:0, h:0 };
+  const pts = a.kind === 'ink' ? a.points.map(p => [p[0],p[1],0,0]) : a.rects;
+  let x0=1,y0=1,x1=0,y1=0;
+  for(const [x,y,w,h] of pts){ x0=Math.min(x0,x); y0=Math.min(y0,y); x1=Math.max(x1,x+w); y1=Math.max(y1,y+h); }
+  return { x:x0, y:y0, w:x1-x0, h:y1-y0 };
+}
+const marginW = n => { const m = (S.margins[S.current] || {})[n]; return m ? m : 0; };
+function setMargin(n, w){ (S.margins[S.current] ||= {})[n] = w; }
+
+/* ---------- Opening a document ---------- */
+let io;
+async function openDoc(id){
+  const d = S.docs.find(x => x.id === id); if(!d) return;
+  S.current = id; S.active = null; hideFloat();
+  DB.set('lastDoc', id);
+  $('#docTitle').textContent = d.name; $('#docPages').textContent = '';
+  $('#sheets').innerHTML = '<div class="loading">Opening…</div>';
+  renderFiles(); renderIndex();
+  try{
+    if(S.pdf) S.pdf.destroy();
+    S.pdf = await pdfjsLib.getDocument({ data:new Uint8Array(d.bytes).slice(), isEvalSupported:false }).promise;
+  }catch(e){
+    $('#sheets').innerHTML = '<div class="loading">This file could not be opened. It may be damaged or password-protected.</div>'; return;
+  }
+  const first = await S.pdf.getPage(1); const w1 = first.getViewport({ scale:1 }).width;
+  const sw = $('#scroller').clientWidth, avail = (sw > 200 ? sw : innerWidth) - 48;
+  S.scale = clamp((avail - (avail >= 620 ? DEFAULT_MARGIN : STRIP)) / w1, 0.4, 1.4);
+  S.scale = Math.round(S.scale * 20) / 20;
+  d.pages = S.pdf.numPages; $('#docPages').textContent = d.pages + (d.pages === 1 ? ' page' : ' pages');
+  await buildSheets();
+}
+
+async function buildSheets(){
+  const gen = ++S.gen; const wrap = $('#sheets');
+  $('#zoomVal').textContent = Math.round(S.scale * 100) + '%';
+  if(io) io.disconnect();
+  io = new IntersectionObserver(es => es.forEach(e => { if(e.isIntersecting) renderPage(+e.target.dataset.page, gen); }), { root:$('#scroller'), rootMargin:'800px 0px' });
+  const frag = document.createDocumentFragment(); S.pages = [];
+  for(let n = 1; n <= S.pdf.numPages; n++){
+    const page = await S.pdf.getPage(n); if(gen !== S.gen) return;
+    const vp = page.getViewport({ scale:S.scale });
+    const sheet = document.createElement('div'); sheet.className = 'sheet'; sheet.dataset.page = n;
+    sheet.innerHTML = `<div class="pagecol"><div class="page" style="width:${vp.width}px;height:${vp.height}px"><canvas></canvas>
+      <svg class="marks" viewBox="0 0 1 1" preserveAspectRatio="none"></svg><div class="textLayer"></div>
+      <svg class="inklayer" viewBox="0 0 1 1" preserveAspectRatio="none"></svg><div class="tooloverlay"></div><span class="pageno">p. ${n}</span></div>
+      <div class="extension" hidden><span>ROOM ADDED FOR MARGIN NOTES</span></div></div>
+      <div class="margin"><div class="strip"><button class="open-margin" title="Open the margin">+ MARGIN</button></div><div class="cards"></div>
+      <button class="fold" title="Fold the margin away">Fold</button><div class="grip" title="Drag to resize. Double-click to fold."></div></div>
+      <svg class="leaders"></svg>`;
+    frag.append(sheet);
+    S.pages[n] = { page, vp, sheet, W:vp.width, H:vp.height, rendered:false };
+    bindSheet(n);
+  }
+  wrap.innerHTML = ''; wrap.append(frag);
+  for(let n = 1; n < S.pages.length; n++){ io.observe(S.pages[n].sheet); refreshPage(n); }
+}
+
+async function renderPage(n, gen){
+  const P = S.pages[n]; if(!P || P.rendered || gen !== S.gen) return; P.rendered = true;
+  const dpr = window.devicePixelRatio || 1; const canvas = $('canvas', P.sheet);
+  canvas.width = Math.floor(P.W * dpr); canvas.height = Math.floor(P.H * dpr);
+  canvas.style.width = P.W + 'px'; canvas.style.height = P.H + 'px';
+  try{
+    await P.page.render({ canvasContext:canvas.getContext('2d'), viewport:P.vp, transform: dpr !== 1 ? [dpr,0,0,dpr,0,0] : null }).promise;
+    if(gen !== S.gen) return;
+    const tl = $('.textLayer', P.sheet); tl.style.setProperty('--scale-factor', P.vp.scale);
+    const tc = await P.page.getTextContent();
+    await pdfjsLib.renderTextLayer({ textContentSource:tc, container:tl, viewport:P.vp, textDivs:[] }).promise;
+    const end = document.createElement('div'); end.className = 'endOfContent'; tl.append(end);
+  }catch(e){ /* a page that fails to draw stays blank; annotations still work */ }
+}
+
+/* ---------- Drawing marks, margins, cards and leader lines ---------- */
+function refreshPage(n){ drawMarks(n); layoutCards(n); }
+function refreshAll(){ for(let n = 1; n < S.pages.length; n++) refreshPage(n); renderIndex(); renderFiles(); }
+
+function drawMarks(n){
+  const P = S.pages[n]; if(!P) return; let m = '', k = '';
+  for(const a of pageAnns(n)){
+    const act = a.id === S.active ? ' active' : '';
+    if(a.kind === 'text') for(const [x,y,w,h] of a.rects)
+      m += `<rect class="hl${act}" x="${x}" y="${y}" width="${w}" height="${h}" fill="${COLORS[a.color]}" vector-effect="non-scaling-stroke"/>`;
+    else if(a.kind === 'area'){ const [x,y,w,h] = a.rects[0];
+      m += `<rect class="area${act}" x="${x}" y="${y}" width="${w}" height="${h}" fill="${COLORS[a.color]}" fill-opacity=".35" stroke="${STROKE[a.color]}" stroke-width="1.5" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"/>`; }
+    else if(a.kind === 'ink')
+      k += `<path d="${pathD(a.points)}" fill="none" stroke="${a.color}" stroke-width="${a.width * S.scale}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+  }
+  $('.marks', P.sheet).innerHTML = m; $('.inklayer', P.sheet).innerHTML = k;
+}
+const pathD = pts => pts.map((p,i) => (i ? 'L' : 'M') + p[0].toFixed(4) + ' ' + p[1].toFixed(4)).join(' ');
+
+function layoutCards(n){
+  const P = S.pages[n]; if(!P) return;
+  const { sheet, W, H } = P; const w = marginW(n);
+  const margin = $('.margin', sheet), cardsEl = $('.cards', sheet), strip = $('.strip', sheet), ext = $('.extension', sheet), svg = $('.leaders', sheet);
+  const list = pageAnns(n).filter(hasCard).sort((a,b) => box(a).y - box(b).y || a.createdAt - b.createdAt);
+  margin.classList.toggle('collapsed', !w); margin.style.width = (w || STRIP) + 'px';
+
+  // Folded margin: show a pin per note at its height
+  $$('.pin', strip).forEach(e => e.remove());
+  if(!w){
+    for(const a of list){ const b = document.createElement('button'); b.className = 'pin'; b.dataset.id = a.id;
+      b.style.top = clamp(box(a).y * H, 44, H - 14) + 'px'; b.style.background = TAG_COLOR[a.tag || 'note'];
+      b.title = (TAGS[a.tag] || 'Note') + ': ' + (a.note || '').slice(0, 80); strip.append(b); }
+    cardsEl.innerHTML = ''; svg.innerHTML = ''; ext.hidden = true; margin.style.minHeight = ''; return;
+  }
+
+  // Reconcile cards in place so typing never loses focus
+  const keep = new Set(list.map(a => a.id));
+  $$('.card', cardsEl).forEach(c => { if(!keep.has(c.dataset.id)) c.remove(); });
+  let y = 34; const placed = [];
+  for(const a of list){
+    let c = $(`.card[data-id="${a.id}"]`, cardsEl);
+    if(!c){ c = makeCard(a); cardsEl.append(c); }
+    c.className = 'card tag-' + (a.tag || 'note') + (a.id === S.active ? ' active' : '');
+    $('.tag', c).textContent = TAGS[a.tag || 'note'];
+    const ta = $('textarea', c);
+    if(document.activeElement !== ta && ta.value !== (a.note || '')) ta.value = a.note || '';
+    ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px';
+    const top = Math.max(box(a).y * H - 14, y);
+    c.style.top = top + 'px'; y = top + c.offsetHeight + 10; placed.push({ a, top });
+  }
+  const total = Math.max(H, y + 12);
+  margin.style.minHeight = total + 'px';
+  ext.hidden = total <= H + 1;
+
+  // Leader lines from each anchor to its card
+  svg.setAttribute('width', W + w); svg.setAttribute('height', total);
+  let s = '';
+  for(const { a, top } of placed){
+    if(a.kind === 'margin') continue;
+    const b = box(a), ay = (b.y + b.h/2) * H, ax = (b.x + b.w) * W, cy = top + 15, cx = W + 14, act = a.id === S.active ? ' act' : '';
+    if(act) s += `<path class="lead across act" d="M${ax+3} ${ay} H${W}"/>`;
+    s += `<path class="lead${act}" d="M${W} ${ay} C ${W+10} ${ay}, ${cx-10} ${cy}, ${cx} ${cy}"/><circle class="lead-dot${act}" cx="${W}" cy="${ay}" r="2.5"/>`;
+  }
+  svg.innerHTML = s;
+}
+
+function makeCard(a){
+  const c = document.createElement('div'); c.dataset.id = a.id;
+  const d = S.docs.find(x => x.id === a.docId);
+  const where = a.kind === 'area' ? 'Marked region' : a.kind === 'margin' ? 'Margin note' : 'Highlight';
+  c.innerHTML = `<div class="card-head"><button class="tag" title="Change type"></button><span class="meta">${where} · p. ${a.page}</span>
+    ${a.example ? '<span class="ex" title="Part of the sample notes">example</span>' : ''}<button class="del" aria-label="Remove note" title="Remove note">${ICON_X}</button></div>
+    ${a.quote ? `<blockquote>“${esc(a.quote)}”</blockquote>` : ''}
+    <textarea rows="1" id="note-${a.id}" aria-label="Note text" placeholder="${a.tag === 'question' ? 'What do you want to find out?' : 'Write a note…'}"></textarea>`;
+  return c;
+}
+
+/* ---------- Creating annotations ---------- */
+function addAnn(o){
+  checkpoint();
+  const a = { id:uid(), docId:S.current, createdAt:Date.now(), updatedAt:Date.now(), color:S.color, note:null, tag:null, ...o };
+  S.anns.push(a);
+  if(hasCard(a) && !marginW(a.page)) setMargin(a.page, DEFAULT_MARGIN);
+  if(hasCard(a)) S.active = a.id;
+  refreshPage(a.page); renderIndex(); renderFiles(); save();
+  if(hasCard(a)) requestAnimationFrame(() => { const t = document.getElementById('note-' + a.id); if(t){ t.focus({ preventScroll:true }); } });
+  return a;
+}
+function removeAnn(a, msg){
+  checkpoint(); S.anns = S.anns.filter(x => x.id !== a.id);
+  if(S.active === a.id) S.active = null;
+  refreshPage(a.page); renderIndex(); renderFiles(); save(); hideFloat();
+  toast(msg || 'Removed', 'Undo', undo);
+}
+
+function bindSheet(n){
+  const P = S.pages[n], sheet = P.sheet, pageEl = $('.page', sheet), tl = $('.textLayer', sheet), ov = $('.tooloverlay', sheet);
+  const norm = e => { const r = pageEl.getBoundingClientRect(); return [clamp((e.clientX - r.left) / r.width, 0, 1), clamp((e.clientY - r.top) / r.height, 0, 1)]; };
+
+  tl.addEventListener('pointerdown', () => tl.classList.add('selecting'));
+  tl.addEventListener('click', e => {
+    const sel = getSelection(); if(sel && !sel.isCollapsed && sel.toString().trim()) return;
+    const [x,y] = norm(e);
+    const hit = pageAnns(n).filter(a => a.kind === 'text' || a.kind === 'area').reverse()
+      .find(a => a.rects.some(([rx,ry,rw,rh]) => x >= rx - 0.003 && x <= rx + rw + 0.003 && y >= ry - 0.004 && y <= ry + rh + 0.004));
+    if(hit){ select(hit); showAnnMenu(hit, e); } else { if(S.active){ const p = S.active; S.active = null; refreshActive(p); } hideFloat(); }
+  });
+
+  // Area, pen and eraser
+  let draft = null, start = null, pts = null, live = null, erased = false;
+  ov.addEventListener('pointerdown', e => {
+    ov.setPointerCapture(e.pointerId); const p = norm(e); hideFloat();
+    if(S.tool === 'area'){ start = p; draft = document.createElement('div'); draft.className = 'area-draft'; pageEl.append(draft); }
+    else if(S.tool === 'pen'){ pts = [p]; live = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      live.setAttribute('fill','none'); live.setAttribute('stroke', S.ink); live.setAttribute('stroke-width', 2 * S.scale);
+      live.setAttribute('stroke-linecap','round'); live.setAttribute('stroke-linejoin','round'); live.setAttribute('vector-effect','non-scaling-stroke');
+      $('.inklayer', sheet).append(live); }
+    else if(S.tool === 'eraser'){ erased = false; eraseAt(p); }
+  });
+  ov.addEventListener('pointermove', e => {
+    const p = norm(e);
+    if(draft && start){ const x = Math.min(p[0], start[0]), y = Math.min(p[1], start[1]);
+      Object.assign(draft.style, { left:x*100+'%', top:y*100+'%', width:Math.abs(p[0]-start[0])*100+'%', height:Math.abs(p[1]-start[1])*100+'%' }); }
+    else if(pts){ const l = pts[pts.length-1]; if(Math.hypot((p[0]-l[0])*P.W, (p[1]-l[1])*P.H) > 1.5){ pts.push(p); live.setAttribute('d', pathD(pts)); } }
+    else if(S.tool === 'eraser' && e.buttons) eraseAt(p);
+  });
+  const end = e => {
+    const p = norm(e);
+    if(draft && start){
+      draft.remove(); draft = null;
+      const r = [Math.min(p[0],start[0]), Math.min(p[1],start[1]), Math.abs(p[0]-start[0]), Math.abs(p[1]-start[1])]; start = null;
+      if(r[2] * P.W > 10 && r[3] * P.H > 10) addAnn({ kind:'area', page:n, rects:[r], quote:null, tag:'note', note:'' });
+    } else if(pts){
+      live.remove(); live = null;
+      if(pts.length > 1) addAnn({ kind:'ink', page:n, points:pts, color:S.ink, width:2 });
+      pts = null;
+    }
+  };
+  ov.addEventListener('pointerup', end); ov.addEventListener('pointercancel', end);
+  function eraseAt([x,y]){
+    const hit = pageAnns(n).find(a => a.kind === 'ink' && a.points.some(q => Math.hypot((q[0]-x)*P.W, (q[1]-y)*P.H) < 9));
+    if(!hit) return;
+    if(!erased){ checkpoint(); erased = true; }
+    S.anns = S.anns.filter(a => a !== hit); drawMarks(n); renderIndex(); renderFiles(); save();
+  }
+
+  // Margin: open, fold, resize, write in empty space
+  const margin = $('.margin', sheet), cardsEl = $('.cards', sheet);
+  $('.open-margin', sheet).addEventListener('click', () => { checkpoint(); setMargin(n, DEFAULT_MARGIN); refreshPage(n); save(); });
+  margin.addEventListener('click', e => {
+    const pin = e.target.closest('.pin'); if(!pin) return;
+    checkpoint(); setMargin(n, DEFAULT_MARGIN); S.active = pin.dataset.id; refreshPage(n); save();
+  });
+  $('.fold', sheet).addEventListener('click', () => { checkpoint(); setMargin(n, 0); if(S.active && pageAnns(n).some(a => a.id === S.active)) S.active = null; refreshPage(n); save(); });
+  const grip = $('.grip', sheet);
+  grip.addEventListener('dblclick', () => { checkpoint(); setMargin(n, 0); refreshPage(n); save(); });
+  grip.addEventListener('pointerdown', e => {
+    e.preventDefault(); grip.setPointerCapture(e.pointerId); grip.classList.add('dragging'); checkpoint();
+    const x0 = e.clientX, w0 = marginW(n);
+    const mv = ev => { setMargin(n, Math.round(clamp(w0 + ev.clientX - x0, MIN_M, MAX_M))); layoutCards(n); };
+    const up = () => { grip.classList.remove('dragging'); grip.removeEventListener('pointermove', mv); grip.removeEventListener('pointerup', up); save(); };
+    grip.addEventListener('pointermove', mv); grip.addEventListener('pointerup', up);
+  });
+  cardsEl.addEventListener('dblclick', e => {
+    if(e.target !== cardsEl) return;
+    const r = cardsEl.getBoundingClientRect();
+    addAnn({ kind:'margin', page:n, y:clamp((e.clientY - r.top) / P.H, 0, 0.98), tag:'note', note:'' });
+  });
+
+  // Cards: typing, tags, removal, focus
+  cardsEl.addEventListener('focusin', e => {
+    const c = e.target.closest('.card'); if(!c) return;
+    if(e.target.tagName === 'TEXTAREA'){ e.target.dataset.dirty = ''; }
+    if(S.active !== c.dataset.id){ const prev = S.active; S.active = c.dataset.id; refreshActive(prev); }
+  });
+  cardsEl.addEventListener('input', e => {
+    const c = e.target.closest('.card'); const a = S.anns.find(x => x.id === c?.dataset.id); if(!a) return;
+    if(!e.target.dataset.dirty){ checkpoint(); e.target.dataset.dirty = '1'; }
+    a.note = e.target.value; a.updatedAt = Date.now();
+    layoutCards(n); renderIndexSoon(); save();
+  });
+  cardsEl.addEventListener('focusout', e => {
+    if(e.target.tagName !== 'TEXTAREA') return;
+    const a = S.anns.find(x => x.id === e.target.closest('.card')?.dataset.id); if(!a || (a.note || '').trim()) return;
+    // An empty note is dropped: highlights stay, empty regions and margin notes go away
+    if(a.kind === 'text'){ a.note = null; a.tag = null; } else S.anns = S.anns.filter(x => x !== a);
+    if(S.active === a.id) S.active = null;
+    setTimeout(() => { refreshPage(n); renderIndex(); renderFiles(); save(); });
+  });
+  cardsEl.addEventListener('click', e => {
+    const c = e.target.closest('.card'); if(!c) return; const a = S.anns.find(x => x.id === c.dataset.id); if(!a) return;
+    if(e.target.closest('.tag')){ checkpoint(); a.tag = TAG_ORDER[(TAG_ORDER.indexOf(a.tag || 'note') + 1) % 3]; refreshPage(n); renderIndex(); save(); }
+    else if(e.target.closest('.del')){
+      if(a.kind === 'text'){ checkpoint(); a.note = null; a.tag = null; refreshPage(n); renderIndex(); save(); toast('Note removed. The highlight stays.', 'Undo', undo); }
+      else removeAnn(a, 'Note removed');
+    }
+  });
+}
+
+function select(a){ const prev = S.active; S.active = a.id; refreshActive(prev); }
+function refreshActive(prev){
+  const pages = new Set([S.anns.find(a => a.id === prev)?.page, S.anns.find(a => a.id === S.active)?.page]);
+  pages.forEach(p => p && refreshPage(p));
+  $$('.item').forEach(i => i.classList.toggle('active', i.dataset.id === S.active));
+}
+
+/* ---------- Text selection → highlight or note ---------- */
+function selectionInfo(){
+  const sel = getSelection(); if(!sel || sel.isCollapsed || !sel.rangeCount) return null;
+  const quote = sel.toString().replace(/\s+/g, ' ').trim(); if(!quote) return null;
+  const range = sel.getRangeAt(0);
+  const node = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+  const pageEl = node?.closest('.page'); if(!pageEl || !$('#sheets').contains(pageEl)) return null;
+  const n = +pageEl.closest('.sheet').dataset.page, pr = pageEl.getBoundingClientRect();
+  let raw = [...range.getClientRects()].filter(r => r.width > 1 && r.height > 1 && r.height < pr.height * 0.2)
+    .map(r => { const x0 = clamp(r.left, pr.left, pr.right), x1 = clamp(r.right, pr.left, pr.right), y0 = clamp(r.top, pr.top, pr.bottom), y1 = clamp(r.bottom, pr.top, pr.bottom);
+      return [(x0 - pr.left) / pr.width, (y0 - pr.top) / pr.height, (x1 - x0) / pr.width, (y1 - y0) / pr.height]; })
+    .filter(r => r[2] > 0.001 && r[3] > 0.001)
+    .sort((a,b) => a[1] - b[1] || a[0] - b[0]);
+  const merged = [];
+  for(const r of raw){
+    const m = merged.find(q => Math.abs((q[1] + q[3]/2) - (r[1] + r[3]/2)) < Math.min(q[3], r[3]) * 0.5 && r[0] <= q[0] + q[2] + q[3] * 1.2 && r[0] + r[2] >= q[0] - q[3] * 1.2);
+    if(m){ const x0 = Math.min(m[0], r[0]), y0 = Math.min(m[1], r[1]), x1 = Math.max(m[0]+m[2], r[0]+r[2]), y1 = Math.max(m[1]+m[3], r[1]+r[3]); m.splice(0, 4, x0, y0, x1-x0, y1-y0); }
+    else merged.push([...r]);
+  }
+  if(!merged.length) return null;
+  const last = range.getBoundingClientRect();
+  return { page:n, rects:merged, quote, rect:last };
+}
+function hideFloat(){ $('#float').hidden = true; S.pending = null; }
+function placeFloat(rect){
+  const f = $('#float'); f.hidden = false;
+  const fw = f.offsetWidth, fh = f.offsetHeight;
+  let x = rect.left + rect.width/2 - fw/2, y = rect.top - fh - 10;
+  if(y < 8) y = rect.bottom + 10;
+  f.style.left = clamp(x, 8, innerWidth - fw - 8) + 'px'; f.style.top = clamp(y, 8, innerHeight - fh - 8) + 'px';
+}
+const swatches = act => Object.keys(COLORS).map(c => `<button class="dot" data-act="${act}" data-color="${c}" style="background:${COLORS[c]}" aria-label="${c} highlight" title="Highlight ${c}"></button>`).join('');
+function showSelMenu(info){
+  S.pending = info;
+  $('#float').innerHTML = swatches('hl') + '<span class="sep"></span><button class="fbtn" data-act="note">Add note</button><button class="fbtn" data-act="question">Ask a question</button>';
+  placeFloat(info.rect);
+}
+function showAnnMenu(a, e){
+  S.pending = { ann:a.id };
+  $('#float').innerHTML = (a.kind === 'text' ? swatches('recolor') + '<span class="sep"></span>' : '') +
+    (hasCard(a) ? '<button class="fbtn" data-act="show">Show note</button>' : '<button class="fbtn" data-act="attach">Add note</button>') +
+    '<button class="fbtn" data-act="remove">Remove</button>';
+  placeFloat({ left:e.clientX - 1, top:e.clientY - 6, width:2, height:12, bottom:e.clientY + 6 });
+}
+$('#float').addEventListener('pointerdown', e => e.preventDefault());
+$('#float').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b || !S.pending) return; const act = b.dataset.act;
+  if(S.pending.rects){
+    const p = S.pending; getSelection().removeAllRanges(); hideFloat();
+    if(act === 'hl'){ S.color = b.dataset.color; renderColors(); addAnn({ kind:'text', page:p.page, rects:p.rects, quote:p.quote, color:b.dataset.color }); }
+    else addAnn({ kind:'text', page:p.page, rects:p.rects, quote:p.quote, tag:act === 'question' ? 'question' : 'note', note:'' });
+    return;
+  }
+  const a = S.anns.find(x => x.id === S.pending.ann); if(!a) return hideFloat();
+  if(act === 'recolor'){ checkpoint(); a.color = b.dataset.color; refreshPage(a.page); renderIndex(); save(); hideFloat(); }
+  else if(act === 'attach'){ hideFloat(); checkpoint(); a.note = ''; a.tag = 'note'; if(!marginW(a.page)) setMargin(a.page, DEFAULT_MARGIN); S.active = a.id; refreshPage(a.page); save();
+    requestAnimationFrame(() => document.getElementById('note-' + a.id)?.focus({ preventScroll:true })); }
+  else if(act === 'show'){ hideFloat(); if(!marginW(a.page)){ checkpoint(); setMargin(a.page, DEFAULT_MARGIN); save(); } refreshPage(a.page);
+    const c = $(`.card[data-id="${a.id}"]`); if(c){ c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); $('textarea', c).focus({ preventScroll:true }); } }
+  else if(act === 'remove') removeAnn(a, a.kind === 'area' ? 'Region removed' : 'Highlight removed');
+});
+document.addEventListener('pointerup', e => {
+  $$('.textLayer.selecting').forEach(t => t.classList.remove('selecting'));
+  const t = e.target.nodeType === 1 ? e.target : null;
+  if(S.tool !== 'select' || t?.closest('#float') || t?.closest('.card')) return;
+  setTimeout(() => { const info = selectionInfo(); if(info) showSelMenu(info); else if(S.pending?.rects) hideFloat(); }, 10);
+});
+$('#scroller').addEventListener('scroll', () => { if(!$('#float').hidden) hideFloat(); }, { passive:true });
+
+/* ---------- Library and index ---------- */
+function renderFiles(){
+  $('#fileList').innerHTML = S.docs.map(d => {
+    const c = docAnns(d.id).length;
+    return `<li><button class="file" data-doc="${d.id}" aria-current="${d.id === S.current}">${ICON_DOC}<span class="name">${esc(d.name)}</span><span class="count mono" title="Annotations">${c || ''}</span></button></li>`;
+  }).join('');
+}
+const FILTERS = [['all','All'],['note','Notes'],['question','Questions'],['key','Key concepts'],['highlight','Highlights']];
+function matchFilter(a, f){
+  if(f === 'all') return true;
+  if(f === 'highlight') return a.kind === 'text' && a.note == null;
+  return hasCard(a) && (a.tag || 'note') === f;
+}
+let indexTimer; const renderIndexSoon = () => { clearTimeout(indexTimer); indexTimer = setTimeout(renderIndex, 200); };
+function renderIndex(){
+  const q = S.query.trim().toLowerCase();
+  const scoped = S.anns.filter(a => S.scope === 'all' || a.docId === S.current);
+  const searched = scoped.filter(a => {
+    if(!q) return true; const d = S.docs.find(x => x.id === a.docId);
+    return [a.quote, a.note, d?.name].some(s => s && s.toLowerCase().includes(q));
+  });
+  $('#chips').innerHTML = FILTERS.map(([k,l]) => `<button class="chip" data-filter="${k}" aria-pressed="${S.filter === k}">${l}<span class="n">${searched.filter(a => matchFilter(a,k)).length}</span></button>`).join('');
+  const list = searched.filter(a => matchFilter(a, S.filter));
+  const hiRx = q ? new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi') : null;
+  const hi = s => { const e = esc(s); return hiRx ? e.replace(hiRx, m => `<mark>${m}</mark>`) : e; };
+  if(!list.length){ $('#indexList').innerHTML = `<div class="empty">${q ? 'Nothing matches “' + esc(S.query) + '”.' : 'No annotations here yet. Select text on a page to start.'}</div>`; return; }
+  const order = S.docs.map(d => d.id); let html = '', lastDoc = null;
+  list.sort((a,b) => order.indexOf(a.docId) - order.indexOf(b.docId) || a.page - b.page || box(a).y - box(b).y);
+  for(const a of list){
+    if(S.scope === 'all' && a.docId !== lastDoc){ lastDoc = a.docId; html += `<h3>${esc(S.docs.find(d => d.id === a.docId)?.name)}</h3>`; }
+    const kind = a.kind === 'ink' ? 'Drawing' : a.kind === 'margin' ? 'Margin' : a.kind === 'area' ? 'Region' : hasCard(a) ? '' : 'Highlight';
+    const label = hasCard(a) ? TAGS[a.tag || 'note'] + (kind ? ' · ' + kind : '') : kind;
+    const sw = a.kind === 'ink' ? a.color : hasCard(a) && a.kind !== 'text' ? TAG_COLOR[a.tag || 'note'] : COLORS[a.color];
+    html += `<button class="item${a.id === S.active ? ' active' : ''}" data-id="${a.id}"><span class="item-meta"><span class="swatch" style="background:${sw}"></span>p. ${a.page} · ${label}</span>
+      ${a.quote ? `<span class="item-quote">“${hi(a.quote)}”</span>` : ''}${a.note ? `<span class="item-note">${hi(a.note)}</span>` : ''}</button>`;
+  }
+  $('#indexList').innerHTML = html;
+}
+async function goTo(id){
+  const a = S.anns.find(x => x.id === id); if(!a) return;
+  if(a.docId !== S.current) await openDoc(a.docId);
+  const P = S.pages[a.page]; if(!P) return;
+  if(hasCard(a) && !marginW(a.page)){ checkpoint(); setMargin(a.page, DEFAULT_MARGIN); save(); }
+  const prev = S.active; S.active = a.id; refreshActive(prev);
+  const sc = $('#scroller');
+  sc.scrollTo({ top: P.sheet.offsetTop + box(a).y * P.H - 140, behavior: reduceMotion ? 'auto' : 'smooth' });
+  const c = $(`.card[data-id="${a.id}"]`); if(c){ c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); }
+  closeSide();
+}
+$('#fileList').addEventListener('click', e => { const b = e.target.closest('[data-doc]'); if(b && b.dataset.doc !== S.current){ openDoc(b.dataset.doc); closeSide(); } });
+$('#indexList').addEventListener('click', e => { const b = e.target.closest('.item'); if(b) goTo(b.dataset.id); });
+$('#chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if(!b) return; S.filter = b.dataset.filter; renderIndex(); });
+$('#scope').addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return; S.scope = b.dataset.scope;
+  $$('#scope button').forEach(x => x.setAttribute('aria-pressed', x === b)); renderIndex(); });
+$('#search').addEventListener('input', e => { S.query = e.target.value; renderIndex(); });
+
+/* ---------- Importing PDFs ---------- */
+async function importFiles(files){
+  let lastId = null, bad = 0;
+  for(const f of files){
+    const buf = await f.arrayBuffer(); const head = new TextDecoder().decode(new Uint8Array(buf.slice(0, 1024)));
+    if(!head.includes('%PDF')){ bad++; continue; }
+    const d = { id:uid(), name:f.name.replace(/\.pdf$/i, ''), bytes:buf, addedAt:Date.now() };
+    S.docs.push(d); await DB.putDoc(d); lastId = d.id;
+  }
+  if(bad) toast(bad === 1 ? 'That file is not a PDF. Only PDFs can be opened for now.' : bad + ' files were skipped because they are not PDFs.');
+  if(lastId){ renderFiles(); openDoc(lastId); }
+}
+$('#fileInput').addEventListener('change', e => { importFiles([...e.target.files]); e.target.value = ''; });
+let dragDepth = 0;
+addEventListener('dragenter', e => { if(e.dataTransfer?.types?.includes('Files')){ dragDepth++; $('#drop').hidden = false; } });
+addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if(!dragDepth) $('#drop').hidden = true; });
+addEventListener('dragover', e => e.preventDefault());
+addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; const fs = [...(e.dataTransfer?.files || [])]; if(fs.length) importFiles(fs); });
+
+/* ---------- Toolbar ---------- */
+function setTool(t){
+  S.tool = t; document.body.dataset.tool = t; hideFloat();
+  $$('.tool[data-tool]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t));
+  renderColors();
+}
+function renderColors(){
+  const pen = S.tool === 'pen';
+  const set = pen ? { '#D9480F':'Red pen', '#2D47C4':'Blue pen', '#18202E':'Black pen', '#0E7466':'Green pen' } : Object.fromEntries(Object.keys(COLORS).map(c => [c, c[0].toUpperCase() + c.slice(1) + ' highlight']));
+  const cur = pen ? S.ink : S.color;
+  $('#colors').innerHTML = Object.entries(set).map(([v,l]) => `<button class="dot" data-v="${v}" aria-pressed="${v === cur}" title="${l}" aria-label="${l}" style="background:${pen ? v : COLORS[v]}"></button>`).join('');
+  $('#colors').style.padding = '6px 8px'; $('#colors').style.gap = '8px';
+}
+$('#colors').addEventListener('click', e => { const b = e.target.closest('.dot'); if(!b) return; if(S.tool === 'pen') S.ink = b.dataset.v; else S.color = b.dataset.v; renderColors(); });
+$$('.tool[data-tool]').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+$('#undo').addEventListener('click', undo); $('#redo').addEventListener('click', redo);
+async function zoom(d){
+  if(!S.pdf) return; const sc = $('#scroller');
+  const ratio = sc.scrollTop / Math.max(1, sc.scrollHeight);
+  S.scale = clamp(Math.round((S.scale + d) * 20) / 20, 0.4, 2.5); await buildSheets();
+  sc.scrollTop = ratio * sc.scrollHeight;
+}
+$('#zoomIn').addEventListener('click', () => zoom(0.1)); $('#zoomOut').addEventListener('click', () => zoom(-0.1));
+$('#cleanBtn').addEventListener('click', e => { S.clean = !S.clean; document.body.classList.toggle('clean', S.clean); e.currentTarget.setAttribute('aria-pressed', S.clean); hideFloat(); });
+
+function markdown(){
+  const d = S.docs.find(x => x.id === S.current); if(!d) return '';
+  const list = docAnns(d.id).filter(a => a.kind !== 'ink').sort((a,b) => a.page - b.page || box(a).y - box(b).y);
+  let md = `# ${d.name}\n`, page = 0;
+  for(const a of list){
+    if(a.page !== page){ page = a.page; md += `\n## Page ${page}\n`; }
+    md += '\n';
+    if(a.quote) md += `> ${a.quote}\n`;
+    if(a.kind === 'area') md += `> _(marked region)_\n`;
+    if(hasCard(a)) md += `${a.quote || a.kind === 'area' ? '\n' : ''}**${TAGS[a.tag || 'note']}:** ${a.note || ''}\n`;
+  }
+  return md;
+}
+$('#copyMd').addEventListener('click', () => {
+  const md = markdown(); const n = docAnns(S.current).filter(a => a.kind !== 'ink').length;
+  const fallback = () => {
+    $('#modal').innerHTML = `<div class="modal-box" role="dialog" aria-label="Notes as Markdown"><h2>Your notes as Markdown</h2><p>Copying is blocked here. The text is selected: press ⌘C or Ctrl+C.</p><textarea id="mdOut" readonly></textarea><div><button class="btn primary" id="mdClose">Done</button></div></div>`;
+    $('#modal').hidden = false; const t = $('#mdOut'); t.value = md; t.focus(); t.select();
+    $('#mdClose').onclick = () => { $('#modal').hidden = true; };
+  };
+  try{ navigator.clipboard.writeText(md).then(() => toast(`Copied ${n} annotation${n === 1 ? '' : 's'} as Markdown`), fallback); }catch(e){ fallback(); }
+});
+
+let toastTimer;
+function toast(msg, label, fn){
+  const t = $('#toast'); t.innerHTML = `<span>${esc(msg)}</span>${label ? `<button>${esc(label)}</button>` : ''}`; t.hidden = false;
+  if(label) $('button', t).onclick = () => { fn(); t.hidden = true; };
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
+}
+const openSide = () => { $('#side').classList.add('open'); $('#backdrop').classList.add('show'); };
+const closeSide = () => { $('#side').classList.remove('open'); $('#backdrop').classList.remove('show'); };
+$('#libBtn').addEventListener('click', openSide); $('#backdrop').addEventListener('click', closeSide);
+
+addEventListener('keydown', e => {
+  const typing = /^(INPUT|TEXTAREA)$/.test(e.target.tagName);
+  if(e.key === 'Escape'){ hideFloat(); if(typing) e.target.blur(); $('#modal').hidden = true; closeSide(); return; }
+  if(typing) return;
+  const mod = e.metaKey || e.ctrlKey;
+  if(mod && e.key.toLowerCase() === 'z'){ e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if(mod && e.key.toLowerCase() === 'y'){ e.preventDefault(); redo(); return; }
+  if(mod || e.altKey) return;
+  const map = { v:'select', a:'area', p:'pen', e:'eraser' }; if(map[e.key]) setTool(map[e.key]);
+});
+
+/* ---------- Start ---------- */
+(async () => {
+  setTool('select'); updHist();
+  await DB.open();
+  let docs = (await DB.allDocs()) || [], anns = await DB.get('anns'), margins = await DB.get('margins');
+  if(!docs.length){
+    const { bytes, A } = makeSample();
+    const d = { id:'sample-biol110-02', name:'Lecture 02 · Cell Biology', bytes, addedAt:Date.now(), example:true };
+    docs = [d]; await DB.putDoc(d);
+    anns = seedAnns(d.id, A); margins = { [d.id]: { 1:DEFAULT_MARGIN, 2:DEFAULT_MARGIN, 3:DEFAULT_MARGIN, 4:0 } };
+    await DB.set('anns', anns); await DB.set('margins', margins);
+  }
+  S.docs = docs.sort((a,b) => a.addedAt - b.addedAt); S.anns = anns || []; S.margins = margins || {};
+  setStatus(DB.db ? 'Saved on this device' : 'Storage blocked: notes last until this tab closes');
+  const last = await DB.get('lastDoc');
+  await openDoc(S.docs.some(d => d.id === last) ? last : S.docs[0].id);
+})();
+</script>
+</body>
+</html>
