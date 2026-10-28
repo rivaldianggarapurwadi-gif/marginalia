@@ -23,6 +23,17 @@ Then open http://localhost:3000.
 ## Deploy
 Deployed on Railway with `npm start` (no dependencies). Railway sets `PORT` automatically.
 
+## Android tablet (and phones)
+Marginalia installs as an offline app (PWA) from any HTTPS address. The GitHub Pages workflow publishes it to `https://<user>.github.io/marginalia/` on every push to `main`.
+
+1. One-time setup: on GitHub open **Settings → Pages** and set **Source** to **GitHub Actions**, then re-run the *Deploy to GitHub Pages* workflow (Actions tab).
+2. On the tablet, open the Pages URL in Chrome, tap **⋮ → Add to Home screen → Install**.
+3. Launch Marginalia from the home screen. It opens full screen and works with no connection; PDFs and notes stay on the tablet.
+
+Notes are stored per device, so a PDF annotated on the Mac does not appear on the tablet. Use *Copy notes* or the PDF export to move work across.
+
+To run it from the tablet itself instead, install [Termux](https://f-droid.org/packages/com.termux/), then `pkg install nodejs git`, clone the repo, `npm start`, and open http://localhost:3000 in Chrome.
+
 ## Mac app
 The `desktop/` folder wraps the same page in Electron so it runs as a normal Mac app, fully offline (pdf.js and jsPDF are bundled in `vendor/`). Notes are stored in `~/Library/Application Support/Marginalia`.
 

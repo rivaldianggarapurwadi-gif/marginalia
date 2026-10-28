@@ -6,6 +6,12 @@
 <meta name="description" content="Marginalia: highlight PDFs, anchor notes to passages, and let the margins grow to fit what you write.">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Marginalia</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#F5F6F8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161A21" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1156,6 +1162,8 @@ async function importFiles(files){
   if(lastId){ renderFiles(); openDoc(lastId); }
 }
 $('#fileInput').addEventListener('change', e => { importFiles([...e.target.files]); e.target.value = ''; });
+// PDFs opened with the installed app ("Open with Marginalia")
+if('launchQueue' in window) launchQueue.setConsumer(async p => { if(p.files && p.files.length) importFiles(await Promise.all(p.files.map(h => h.getFile()))); });
 let dragDepth = 0;
 addEventListener('dragenter', e => { if(e.dataTransfer?.types?.includes('Files')){ dragDepth++; $('#drop').hidden = false; } });
 addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if(!dragDepth) $('#drop').hidden = true; });
@@ -1346,6 +1354,11 @@ addEventListener('keydown', e => {
   const last = await DB.get('lastDoc');
   await openDoc(S.docs.some(d => d.id === last) ? last : S.docs[0].id);
 })();
+
+// Installable offline app (Android tablets, Chrome, Edge). Skipped in the desktop shell and on file:// pages.
+if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+// Ask the browser to keep PDFs and notes instead of clearing them when the device runs low on space.
+if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 </script>
 </body>
 </html>
