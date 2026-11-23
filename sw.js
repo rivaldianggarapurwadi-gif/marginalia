@@ -1,8 +1,8 @@
 // Offline support for the installed app (Android, Chrome, Edge).
 // The app shell is cached on install; pages fetch fresh copies when online and fall back to the cache offline.
-const CACHE = 'marginalia-v1';
+const CACHE = 'marginalia-v2';
 const SHELL = [
-  './', 'index.html', 'manifest.webmanifest',
+  './', 'index.html', 'pptx.js', 'manifest.webmanifest',
   'vendor/pdf.min.js', 'vendor/pdf.worker.min.js', 'vendor/jspdf.umd.min.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
