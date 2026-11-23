@@ -289,6 +289,9 @@ const PPTX = (() => {
   async function loadImage(ctx, path, crop){
     const key = path + '|' + (crop || []).join(',');
     if(ctx.images.has(key)) return ctx.images.get(key);
+    // jsPDF reuses any image whose alias it has seen before, so every distinct picture in the
+    // whole presentation needs its own alias (the map is shared by all slides)
+    const alias = 'pptx-img-' + ctx.images.size;
     const job = (async () => {
       const bytes = await ctx.zip.bytes(path); if(!bytes) return null;
       const ext = path.split('.').pop().toLowerCase(), type = MIME[ext]; if(!type) return null;
@@ -311,7 +314,7 @@ const PPTX = (() => {
       g.drawImage(bmp, bmp.width * l, bmp.height * t, sw, sh, 0, 0, cv.width, cv.height);
       if(bmp.close) bmp.close();
       return isJpg ? { data:cv.toDataURL('image/jpeg', 0.92), fmt:'JPEG' } : { data:cv.toDataURL('image/png'), fmt:'PNG' };
-    })().catch(() => null);
+    })().then(r => r && { ...r, alias }).catch(() => null);
     ctx.images.set(key, job); return job;
   }
   async function drawBlip(doc, ctx, blipFill, rels, b){
@@ -321,9 +324,8 @@ const PPTX = (() => {
     const img = await loadImage(ctx, rel.target, crop);
     if(!img){ ctx.skipped.images++; return; }
     const alpha = kids(blip, 'alphaModFix')[0], a = alpha ? num(attr(alpha, 'amt'), 100000) / 100000 : 1;
-    ctx.imgN = (ctx.imgN || 0) + 1;
     withAlpha(doc, a, 1, () => {
-      try{ doc.addImage(img.data, img.fmt, b.x, b.y, Math.max(b.w, 0.1), Math.max(b.h, 0.1), 'img' + ctx.imgN, 'FAST', -(b.rot || 0)); }
+      try{ doc.addImage(img.data, img.fmt, b.x, b.y, Math.max(b.w, 0.1), Math.max(b.h, 0.1), img.alias, 'FAST', -(b.rot || 0)); }
       catch(e){ ctx.skipped.images++; }
     });
   }
