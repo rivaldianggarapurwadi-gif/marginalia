@@ -4,6 +4,7 @@ A desktop-first study workspace for PDFs. Open a lecture deck or paper, highligh
 
 ## Features
 - Open PDFs and PowerPoint slides (.pptx). Slides are converted to pages on import, with real text, so you highlight, search and annotate them exactly like a PDF
+- Add files from a shared Google Drive folder (button **Drive**): paste a folder link shared as "Anyone with the link", tick files (subfolders included) and they are copied into the library. PDFs, PowerPoint and Google Slides/Docs/Sheets (exported as PDF) are supported; the list shows what is already added or changed in Drive
 - Delete a file from the library with the trash icon next to its name (always visible on touch screens). Its notes go with it, and the toast offers Undo
 - Pinch with two fingers (tablets, phones) or on a trackpad to zoom; ⌘+ / ⌘− and the toolbar buttons work too
 - Highlight text in four colours; attach a Note, Question or Key concept to any selection
@@ -16,6 +17,9 @@ A desktop-first study workspace for PDFs. Open a lecture deck or paper, highligh
 - Find in document (⌘F, ⌘G / ⇧⌘G for next / previous) with every match highlighted on the page
 - Undo/redo, "Original only" view, copy notes as Markdown
 - Local-first: PDFs and notes are stored in the browser (IndexedDB)
+
+### Google Drive
+The Drive dialog uses the Google Drive API with an API key, which only reads files that are already shared publicly. Create one once: enable the [Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com), then **Credentials → Create credentials → API key** (optionally restrict it to the Drive API; leave Application restrictions on None so it works in the installed app and the Mac app). The key and folder link are saved on each device.
 
 ### PowerPoint support
 The conversion runs in the browser (`pptx.js`), so it works offline. It draws text boxes and placeholders with their master and layout styles, shapes, pictures, groups, tables, SmartArt and backgrounds. Charts, video and EMF/WMF pictures are left out (you are told how many). Fonts are mapped to Helvetica, Times or Courier, so line breaks can differ slightly from PowerPoint. Older binary `.ppt` files are not supported: save them as `.pptx` or PDF first.

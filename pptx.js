@@ -286,16 +286,70 @@ const PPTX = (() => {
 
   /* ---------- Pictures ---------- */
   const MIME = { png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif', bmp:'image/bmp', webp:'image/webp', svg:'image/svg+xml', tif:'image/tiff', tiff:'image/tiff' };
-  async function loadImage(ctx, path, crop){
-    const key = path + '|' + (crop || []).join(',');
+  // EMF pictures cannot be drawn by a browser, but most in slides are just a wrapper around a
+  // bitmap (a screenshot or photo pasted in Office). Take the largest bitmap out as a BMP file.
+  function emfBitmap(bytes){
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength); let best = null, mask = null;
+    for(let o = 0; o + 8 <= bytes.length;){
+      const type = dv.getUint32(o, true), size = dv.getUint32(o + 4, true);
+      if(size < 8 || o + size > bytes.length) break;
+      const at = type === 81 ? 48 : (type === 76 || type === 77) ? 84 : 0;   // STRETCHDIBITS, BITBLT, STRETCHBLT
+      if(at && size >= at + 16){
+        const offBmi = dv.getUint32(o + at, true), cbBmi = dv.getUint32(o + at + 4, true), offBits = dv.getUint32(o + at + 8, true), cbBits = dv.getUint32(o + at + 12, true);
+        if(cbBmi >= 40 && cbBits && offBmi + cbBmi <= size && offBits + cbBits <= size){
+          const r = { o, offBmi, cbBmi, offBits, cbBits, bpp:dv.getUint16(o + offBmi + 14, true), w:dv.getInt32(o + offBmi + 4, true), h:dv.getInt32(o + offBmi + 8, true) };
+          if(r.bpp === 1) mask = r; else if(!best || cbBits > best.cbBits) best = r;
+        }
+      }
+      if(type === 14) break;   // EOF
+      o += size;
+    }
+    if(!best) best = mask, mask = null; if(!best) return null;
+    const bmpOf = r => {
+      const out = new Uint8Array(14 + r.cbBmi + r.cbBits), ov = new DataView(out.buffer);
+      out[0] = 0x42; out[1] = 0x4D; ov.setUint32(2, out.length, true); ov.setUint32(10, 14 + r.cbBmi, true);
+      out.set(bytes.subarray(r.o + r.offBmi, r.o + r.offBmi + r.cbBmi), 14);
+      out.set(bytes.subarray(r.o + r.offBits, r.o + r.offBits + r.cbBits), 14 + r.cbBmi);
+      return out;
+    };
+    // Office pastes transparent pictures as a 1-bit mask plus the colour bitmap
+    return { color:bmpOf(best), mask:mask && mask.w === best.w && Math.abs(mask.h) === Math.abs(best.h) ? bmpOf(mask) : null };
+  }
+  // Picture effects from the blip: recolour to transparent, brightness and contrast, greyscale
+  function blipEffects(blip){
+    if(!blip) return null;
+    const fx = {}, cc = kid(blip, 'clrChange'), lum = kid(blip, 'lum');
+    if(cc){ const from = kid(cc, 'clrFrom'), to = kid(cc, 'clrTo'), f = from && kid(from, 'srgbClr'), t = to && kid(to, 'srgbClr');
+      if(f && t){ const al = kid(t, 'alpha'); fx.change = { from:hex2rgb(attr(f, 'val')), to:hex2rgb(attr(t, 'val')), a:al ? num(attr(al, 'val'), 100000) / 100000 : 1 }; } }
+    if(lum){ fx.bright = num(attr(lum, 'bright'), 0) / 100000; fx.contrast = num(attr(lum, 'contrast'), 0) / 100000; if(!fx.bright && !fx.contrast) delete fx.bright, delete fx.contrast; }
+    if(kid(blip, 'grayscl')) fx.gray = true;
+    return Object.keys(fx).length ? fx : null;
+  }
+  function applyEffects(g, w, h, fx){
+    const im = g.getImageData(0, 0, w, h), d = im.data, c = fx.contrast || 0, br = fx.bright || 0;
+    const tone = v => { v = (v / 255 - 0.5) * (1 + c) + 0.5; v = br >= 0 ? v + br * (1 - v) : v * (1 + br); return Math.max(0, Math.min(255, v * 255)); };
+    for(let i = 0; i < d.length; i += 4){
+      if(fx.change){ const f = fx.change.from; if(Math.abs(d[i] - f[0]) + Math.abs(d[i+1] - f[1]) + Math.abs(d[i+2] - f[2]) < 40){
+        d[i] = fx.change.to[0]; d[i+1] = fx.change.to[1]; d[i+2] = fx.change.to[2]; d[i+3] = Math.round(d[i+3] * fx.change.a); } }
+      if(fx.gray){ const y = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2]; d[i] = d[i+1] = d[i+2] = y; }
+      if(c || br){ d[i] = tone(d[i]); d[i+1] = tone(d[i+1]); d[i+2] = tone(d[i+2]); }
+    }
+    g.putImageData(im, 0, 0);
+  }
+  // turn: { rot, w, h } draws the picture already rotated (about its centre) into its bounding box
+  async function loadImage(ctx, path, crop, fx, turn){
+    const key = path + '|' + (crop || []).join(',') + '|' + (fx ? JSON.stringify(fx) : '') + '|' + (turn ? [turn.rot, (turn.w / turn.h).toFixed(3)].join(',') : '');
     if(ctx.images.has(key)) return ctx.images.get(key);
     // jsPDF reuses any image whose alias it has seen before, so every distinct picture in the
     // whole presentation needs its own alias (the map is shared by all slides)
     const alias = 'pptx-img-' + ctx.images.size;
     const job = (async () => {
-      const bytes = await ctx.zip.bytes(path); if(!bytes) return null;
-      const ext = path.split('.').pop().toLowerCase(), type = MIME[ext]; if(!type) return null;
-      const isJpg = type === 'image/jpeg';
+      let bytes = await ctx.zip.bytes(path); if(!bytes) return null;
+      let ext = path.split('.').pop().toLowerCase();
+      let mask = null;
+      if(ext === 'emf'){ const e = emfBitmap(bytes); if(!e) return null; bytes = e.color; mask = e.mask; ext = 'bmp'; }
+      const type = MIME[ext]; if(!type) return null;
+      const isJpg = type === 'image/jpeg' && !fx && !turn;
       const noCrop = !crop || crop.every(v => !v);
       if(isJpg && noCrop) return { data:bytes, fmt:'JPEG' };
       let bmp;
@@ -313,6 +367,24 @@ const PPTX = (() => {
       if(isJpg) { g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); }
       g.drawImage(bmp, bmp.width * l, bmp.height * t, sw, sh, 0, 0, cv.width, cv.height);
       if(bmp.close) bmp.close();
+      if(mask){
+        // Mask pixels that are white are the picture; black ones are see-through
+        const mb = await createImageBitmap(new Blob([mask], { type:'image/bmp' })), mc = document.createElement('canvas');
+        mc.width = cv.width; mc.height = cv.height; const mg = mc.getContext('2d');
+        mg.drawImage(mb, mb.width * l, mb.height * t, mb.width * (1 - l - r), mb.height * (1 - t - b), 0, 0, cv.width, cv.height);
+        const md = mg.getImageData(0, 0, cv.width, cv.height).data, im = g.getImageData(0, 0, cv.width, cv.height);
+        for(let i = 0; i < md.length; i += 4) if(md[i] < 128) im.data[i + 3] = 0;
+        g.putImageData(im, 0, 0);
+      }
+      if(fx) applyEffects(g, cv.width, cv.height, fx);
+      if(turn){
+        const a = turn.rot * Math.PI / 180, k = Math.min(cv.width / turn.w, cv.height / turn.h) || 1;
+        const w = turn.w * k, h = turn.h * k, W = Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a)), H = Math.abs(w * Math.sin(a)) + Math.abs(h * Math.cos(a));
+        const s2 = Math.min(1, 3000 / Math.max(W, H)), rc = document.createElement('canvas');
+        rc.width = Math.max(1, Math.round(W * s2)); rc.height = Math.max(1, Math.round(H * s2));
+        const rg = rc.getContext('2d'); rg.translate(rc.width / 2, rc.height / 2); rg.rotate(a); rg.drawImage(cv, -w * s2 / 2, -h * s2 / 2, w * s2, h * s2);
+        return { data:rc.toDataURL('image/png'), fmt:'PNG' };
+      }
       return isJpg ? { data:cv.toDataURL('image/jpeg', 0.92), fmt:'JPEG' } : { data:cv.toDataURL('image/png'), fmt:'PNG' };
     })().then(r => r && { ...r, alias }).catch(() => null);
     ctx.images.set(key, job); return job;
@@ -321,11 +393,16 @@ const PPTX = (() => {
     const blip = kid(blipFill, 'blip'), id = rid(blip, 'embed'), rel = id && rels[id];
     if(!rel || rel.external){ if(rid(blip, 'link')) ctx.skipped.images++; return; }
     const src = at(blipFill, 'srcRect'), crop = src ? ['l','t','r','b'].map(k => num(attr(src, k), 0)) : null;
-    const img = await loadImage(ctx, rel.target, crop);
+    const rot = ((b.rot || 0) % 360 + 360) % 360;
+    const img = await loadImage(ctx, rel.target, crop, blipEffects(blip), rot ? { rot, w:b.w, h:b.h } : null);
     if(!img){ ctx.skipped.images++; return; }
     const alpha = kids(blip, 'alphaModFix')[0], a = alpha ? num(attr(alpha, 'amt'), 100000) / 100000 : 1;
     withAlpha(doc, a, 1, () => {
-      try{ doc.addImage(img.data, img.fmt, b.x, b.y, Math.max(b.w, 0.1), Math.max(b.h, 0.1), img.alias, 'FAST', -(b.rot || 0)); }
+      // A rotated picture arrives already turned; it fills its bounding box around the same centre
+      let x = b.x, y = b.y, w = b.w, h = b.h;
+      if(rot){ const a = rot * Math.PI / 180, cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+        w = Math.abs(b.w * Math.cos(a)) + Math.abs(b.h * Math.sin(a)); h = Math.abs(b.w * Math.sin(a)) + Math.abs(b.h * Math.cos(a)); x = cx - w / 2; y = cy - h / 2; }
+      try{ doc.addImage(img.data, img.fmt, x, y, Math.max(w, 0.1), Math.max(h, 0.1), img.alias, 'FAST'); }
       catch(e){ ctx.skipped.images++; }
     });
   }
