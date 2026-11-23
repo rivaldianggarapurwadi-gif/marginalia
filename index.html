@@ -132,8 +132,10 @@ kbd{font-family:var(--f-mono);font-size:10.5px;border:1px solid var(--line);bord
 .dot[aria-pressed="true"]{box-shadow:0 0 0 2px var(--fg)}
 .zoomval{min-width:44px;text-align:center;font-size:11px;color:var(--muted)}
 .spacer{flex:1}
-.scroller{flex:1;overflow:auto;position:relative;padding-block:28px 80px;padding-left:24px;padding-right:max(24px,env(safe-area-inset-right,0px))}
+.scroller{flex:1;overflow:auto;position:relative;touch-action:pan-x pan-y;padding-block:28px 80px;padding-left:24px;padding-right:max(24px,env(safe-area-inset-right,0px))}
 .sheets{width:max-content;margin-inline:auto;display:flex;flex-direction:column;gap:30px}
+body.pinching .sheets{will-change:transform}
+body.pinching .textLayer{pointer-events:none}
 .loading{color:var(--muted);padding:40px;text-align:center}
 
 .sheet{display:flex;position:relative;align-items:stretch;background:var(--paper);box-shadow:var(--shadow);border-radius:3px}
@@ -320,8 +322,8 @@ body.clean .marks,body.clean .inklayer,body.clean .margin,body.clean .leaders,bo
 
   <aside class="side" id="side" aria-label="Library">
     <section class="files">
-      <div class="sec-head"><h2>Files</h2><label class="btn small" for="fileInput">Add PDF</label></div>
-      <input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden>
+      <div class="sec-head"><h2>Files</h2><label class="btn small" for="fileInput" title="Add a PDF or a PowerPoint file (.pptx)">Add file</label></div>
+      <input type="file" id="fileInput" accept="application/pdf,.pdf,.pptx,.ppsx,.potx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.presentationml.slideshow,application/vnd.ms-powerpoint" multiple hidden>
       <ul id="fileList"></ul>
     </section>
     <section class="index">
@@ -333,10 +335,12 @@ body.clean .marks,body.clean .inklayer,body.clean .margin,body.clean .leaders,bo
       <div id="indexList" class="indexlist"></div>
     </section>
     <div class="help">
+      <div><b>Add file</b> opens PDFs and PowerPoint slides (.pptx). Slides become pages you mark up the same way.</div>
       <div><b>Select text</b> to highlight it or attach a note.</div>
       <div><b>Area</b> marks a diagram or region. <b>Pen</b> draws on the page.</div>
       <div><b>Sticky</b> puts a note right on the page. Drag its top bar to move it, or use the pin on any margin note.</div>
       <div><b>Drag a margin's edge</b> to make room. Double-click an empty margin to write there.</div>
+      <div><b>Pinch</b> with two fingers or on the trackpad to zoom. <kbd>⌘+</kbd> <kbd>⌘−</kbd> work too.</div>
       <div>The original PDF is never changed. <kbd>⌘Z</kbd> undoes.</div>
     </div>
   </aside>
@@ -379,12 +383,13 @@ body.clean .marks,body.clean .inklayer,body.clean .margin,body.clean .leaders,bo
 </div>
 <div id="float" class="float" hidden></div>
 <div id="toast" class="toast" role="status" hidden></div>
-<div id="drop" class="drop" hidden>Drop a PDF to add it to your library</div>
+<div id="drop" class="drop" hidden>Drop a PDF or PowerPoint file to add it to your library</div>
 <div id="modal" class="modal" hidden></div>
 
 <script src="vendor/pdf.min.js"></script>
 <script src="vendor/pdf.worker.min.js"></script>
 <script src="vendor/jspdf.umd.min.js"></script>
+<script src="pptx.js"></script>
 <script>
 'use strict';
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
@@ -412,6 +417,7 @@ const ICON_DOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const ICON_NOTE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 4h16v10l-6 6H4z"/><path d="M14 20v-6h6M8 9h8M8 13h4"/></svg>';
 const STICKY = { yellow:'#FFF0A3', green:'#D2F4C9', pink:'#FFD6E4', blue:'#D2E8FF' };
 const ST_ORDER = ['yellow','green','pink','blue'];
+const ICON_SLIDES = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M12 17v3M8 20h8M7 9h6M7 12h10"/></svg>';
 const ICON_DOC ='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>';
 
 /* ---------- Storage (IndexedDB, on this device only) ---------- */
@@ -920,7 +926,9 @@ function bindSheet(n){
 
   // Area, pen and eraser
   let draft = null, start = null, pts = null, live = null, erased = false, stickAt = null;
+  P.cancel = () => { if(draft){ draft.remove(); draft = null; } if(live){ live.remove(); live = null; } start = pts = stickAt = null; erased = false; };
   ov.addEventListener('pointerdown', e => {
+    if(!e.isPrimary || document.body.classList.contains('pinching')) return;
     ov.setPointerCapture(e.pointerId); const p = norm(e); hideFloat();
     if(S.tool === 'sticky'){ stickAt = p; }
     else if(S.tool === 'area'){ start = p; draft = document.createElement('div'); draft.className = 'area-draft'; pageEl.append(draft); }
@@ -931,13 +939,15 @@ function bindSheet(n){
     else if(S.tool === 'eraser'){ erased = false; eraseAt(p); }
   });
   ov.addEventListener('pointermove', e => {
+    if(!e.isPrimary) return;
     const p = norm(e);
     if(draft && start){ const x = Math.min(p[0], start[0]), y = Math.min(p[1], start[1]);
       Object.assign(draft.style, { left:x*100+'%', top:y*100+'%', width:Math.abs(p[0]-start[0])*100+'%', height:Math.abs(p[1]-start[1])*100+'%' }); }
     else if(pts){ const l = pts[pts.length-1]; if(Math.hypot((p[0]-l[0])*P.W, (p[1]-l[1])*P.H) > 1.5){ pts.push(p); live.setAttribute('d', pathD(pts)); } }
-    else if(S.tool === 'eraser' && e.buttons) eraseAt(p);
+    else if(S.tool === 'eraser' && e.buttons && !document.body.classList.contains('pinching')) eraseAt(p);
   });
   const end = e => {
+    if(!e.isPrimary) return;
     const p = norm(e);
     if(stickAt){
       const w = 0.3, at = stickAt; stickAt = null;
@@ -1096,7 +1106,7 @@ $('#scroller').addEventListener('scroll', () => { if(!$('#float').hidden) hideFl
 function renderFiles(){
   $('#fileList').innerHTML = S.docs.map(d => {
     const c = docAnns(d.id).length;
-    return `<li><button class="file" data-doc="${d.id}" aria-current="${d.id === S.current}">${ICON_DOC}<span class="name">${esc(d.name)}</span><span class="count mono" title="Annotations">${c || ''}</span></button></li>`;
+    return `<li><button class="file" data-doc="${d.id}" aria-current="${d.id === S.current}" title="${d.source === 'pptx' ? 'PowerPoint slides' : 'PDF'}">${d.source === 'pptx' ? ICON_SLIDES : ICON_DOC}<span class="name">${esc(d.name)}</span><span class="count mono" title="Annotations">${c || ''}</span></button></li>`;
   }).join('');
 }
 const FILTERS = [['all','All'],['note','Notes'],['question','Questions'],['key','Key concepts'],['highlight','Highlights']];
@@ -1149,16 +1159,36 @@ $('#scope').addEventListener('click', e => { const b = e.target.closest('button'
   $$('#scope button').forEach(x => x.setAttribute('aria-pressed', x === b)); renderIndex(); });
 $('#search').addEventListener('input', e => { S.query = e.target.value; renderIndex(); });
 
-/* ---------- Importing PDFs ---------- */
+/* ---------- Importing PDFs and PowerPoint slides ---------- */
+// A .pptx is redrawn as a PDF once, on import, with real text. From then on it is
+// highlighted, searched and annotated exactly like a PDF.
 async function importFiles(files){
-  let lastId = null, bad = 0;
+  let lastId = null, bad = 0, oldPpt = 0, failed = 0; const notes = [];
   for(const f of files){
-    const buf = await f.arrayBuffer(); const head = new TextDecoder().decode(new Uint8Array(buf.slice(0, 1024)));
-    if(!head.includes('%PDF')){ bad++; continue; }
-    const d = { id:uid(), name:f.name.replace(/\.pdf$/i, ''), bytes:buf, addedAt:Date.now() };
+    const buf = await f.arrayBuffer(); const u = new Uint8Array(buf.slice(0, 1024));
+    const head = new TextDecoder().decode(u);
+    let d = null;
+    if(head.includes('%PDF')) d = { id:uid(), name:f.name.replace(/\.pdf$/i, ''), bytes:buf, addedAt:Date.now() };
+    else if(u[0] === 0xD0 && u[1] === 0xCF && u[2] === 0x11 && u[3] === 0xE0){ oldPpt++; continue; }
+    else if(await PPTX.isPptx(buf)){
+      try{
+        toast(`Converting “${f.name}”…`);
+        const r = await PPTX.toPdf(buf, (i, n) => toast(`Converting “${f.name}”: slide ${i} of ${n}`));
+        d = { id:uid(), name:f.name.replace(/\.(pptx|ppsx|potx)$/i, ''), bytes:r.bytes, source:'pptx', addedAt:Date.now() };
+        const k = r.skipped, miss = [k.charts && k.charts + ' chart' + (k.charts > 1 ? 's' : ''), k.diagrams && k.diagrams + ' diagram' + (k.diagrams > 1 ? 's' : ''),
+          k.images && k.images + ' picture' + (k.images > 1 ? 's' : '')].filter(Boolean);
+        if(miss.length) notes.push(`${miss.join(', ')} in “${d.name}” could not be shown.`);
+      }catch(e){ failed++; continue; }
+    }
+    else { bad++; continue; }
     S.docs.push(d); await DB.putDoc(d); lastId = d.id;
   }
-  if(bad) toast(bad === 1 ? 'That file is not a PDF. Only PDFs can be opened for now.' : bad + ' files were skipped because they are not PDFs.');
+  const msg = [
+    bad && (bad === 1 ? 'That file is not a PDF or PowerPoint file.' : bad + ' files were skipped: only PDF and PowerPoint (.pptx) files open here.'),
+    oldPpt && 'Older .ppt files cannot be opened. In PowerPoint, Keynote or Google Slides, save it as .pptx or PDF, then add it again.',
+    failed && (failed === 1 ? 'That PowerPoint file could not be converted. Try saving it as PDF first.' : failed + ' PowerPoint files could not be converted.'),
+    ...notes].filter(Boolean);
+  if(msg.length) toast(msg.join(' ')); else if(lastId) $('#toast').hidden = true;
   if(lastId){ renderFiles(); openDoc(lastId); }
 }
 $('#fileInput').addEventListener('change', e => { importFiles([...e.target.files]); e.target.value = ''; });
@@ -1196,6 +1226,77 @@ async function zoom(d){
   sc.scrollTop = ratio * sc.scrollHeight;
 }
 $('#zoomIn').addEventListener('click', () => zoom(0.1)); $('#zoomOut').addEventListener('click', () => zoom(-0.1));
+
+/* ---------- Pinch to zoom: two fingers on a touch screen, or a pinch on a trackpad ---------- */
+// While the fingers move, the pages are scaled with a CSS transform so it stays smooth.
+// When they lift, the pages are redrawn sharp at the new size and the point that was
+// between the fingers is put back under them.
+const Z = { busy:false, anchor:null };
+function zoomAnchor(cx, cy){
+  for(let n = 1; n < S.pages.length; n++){
+    const r = $('.page', S.pages[n].sheet).getBoundingClientRect();
+    if(cy <= r.bottom + 15 || n === S.pages.length - 1) return { n, fx:(cx - r.left) / r.width, fy:(cy - r.top) / r.height };
+  }
+  return null;
+}
+function zoomBegin(cx, cy){
+  const w = $('#sheets'), r = w.getBoundingClientRect(), sc = $('#scroller');
+  Z.anchor = zoomAnchor(cx, cy); w.style.transformOrigin = `${cx - r.left}px ${cy - r.top}px`;
+  hideFloat(); closeFormats(); document.body.classList.add('pinching');
+  for(let n = 1; n < S.pages.length; n++) S.pages[n].cancel?.();
+  return { k:1, m0:[cx, cy], m:[cx, cy], s0:[sc.scrollLeft, sc.scrollTop] };
+}
+const zoomLimit = k => clamp(k, 0.4 / S.scale, 2.5 / S.scale);
+function zoomPreview(g){
+  // Follow the fingers, and undo any scrolling the browser did on its own during the gesture
+  const sc = $('#scroller'), dx = g.m[0] - g.m0[0] + sc.scrollLeft - g.s0[0], dy = g.m[1] - g.m0[1] + sc.scrollTop - g.s0[1];
+  $('#sheets').style.transform = `translate(${dx}px,${dy}px) scale(${g.k})`;
+}
+async function zoomCommit(g){
+  const w = $('#sheets'), sc = $('#scroller');
+  document.body.classList.remove('pinching');
+  const next = clamp(Math.round(S.scale * g.k * 100) / 100, 0.4, 2.5);
+  if(!S.pdf || Math.abs(next - S.scale) < 0.01){ w.style.transform = ''; return; }
+  Z.busy = true;
+  try{
+    S.scale = next; await buildSheets();
+  } finally {
+    w.style.transform = '';
+    const a = Z.anchor, P = a && S.pages[a.n];
+    if(P){ const r = $('.page', P.sheet).getBoundingClientRect();
+      sc.scrollLeft += r.left + a.fx * r.width - g.m[0]; sc.scrollTop += r.top + a.fy * r.height - g.m[1]; }
+    Z.busy = false;
+  }
+}
+{
+  const sc = $('#scroller'); let pinch = null, wheel = null;
+  const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY) || 1;
+  const mid = t => [(t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2];
+  sc.addEventListener('touchstart', e => {
+    if(e.touches.length !== 2 || !S.pdf || Z.busy || wheel) return;
+    if(e.cancelable) e.preventDefault();
+    getSelection()?.removeAllRanges();
+    pinch = zoomBegin(...mid(e.touches)); pinch.d0 = dist(e.touches);
+  }, { passive:false });
+  sc.addEventListener('touchmove', e => {
+    if(!pinch || e.touches.length < 2) return;
+    if(e.cancelable) e.preventDefault();
+    pinch.k = zoomLimit(dist(e.touches) / pinch.d0); pinch.m = mid(e.touches); zoomPreview(pinch);
+  }, { passive:false });
+  const end = e => { if(!pinch || e.touches.length >= 2) return; const g = pinch; pinch = null; zoomCommit(g); };
+  sc.addEventListener('touchend', end); sc.addEventListener('touchcancel', end);
+  // Safari zooms the whole page on its own gesture events
+  ['gesturestart', 'gesturechange'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive:false }));
+  // A trackpad pinch (and Ctrl + mouse wheel) arrives as a wheel event with ctrlKey set
+  sc.addEventListener('wheel', e => {
+    if(!e.ctrlKey || !S.pdf) return;
+    e.preventDefault(); if(Z.busy || pinch) return;
+    if(!wheel) wheel = zoomBegin(e.clientX, e.clientY);
+    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    wheel.k = zoomLimit(wheel.k * Math.exp(-clamp(dy, -40, 40) * 0.01)); zoomPreview(wheel);
+    clearTimeout(wheel.t); wheel.t = setTimeout(() => { const g = wheel; wheel = null; zoomCommit(g); }, 220);
+  }, { passive:false });
+}
 $('#cleanBtn').addEventListener('click', e => { S.clean = !S.clean; document.body.classList.toggle('clean', S.clean); e.currentTarget.setAttribute('aria-pressed', S.clean); hideFloat(); });
 
 function markdown(){
@@ -1329,6 +1430,8 @@ addEventListener('keydown', e => {
   const mod = e.metaKey || e.ctrlKey;
   if(mod && !e.altKey && e.key.toLowerCase() === 'f'){ e.preventDefault(); openFind(); return; }
   if(mod && e.key.toLowerCase() === 'g'){ e.preventDefault(); findStep(e.shiftKey ? -1 : 1); return; }
+  if(mod && !e.altKey && (e.key === '=' || e.key === '+')){ e.preventDefault(); zoom(0.1); return; }
+  if(mod && !e.altKey && e.key === '-'){ e.preventDefault(); zoom(-0.1); return; }
   if(e.key === 'Escape'){ if(F.open && !typing){ closeFind(); return; } hideFloat(); if(typing) e.target.blur(); $('#modal').hidden = true; closeSide(); return; }
   if(typing) return;
   if(mod && e.key.toLowerCase() === 'z'){ e.preventDefault(); e.shiftKey ? redo() : undo(); return; }

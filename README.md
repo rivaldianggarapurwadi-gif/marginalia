@@ -3,6 +3,8 @@
 A desktop-first study workspace for PDFs. Open a lecture deck or paper, highlight it, attach notes to exact passages or regions, and let each page's margin grow to fit what you write. The original PDF is never modified; annotations live in a separate layer.
 
 ## Features
+- Open PDFs and PowerPoint slides (.pptx). Slides are converted to pages on import, with real text, so you highlight, search and annotate them exactly like a PDF
+- Pinch with two fingers (tablets, phones) or on a trackpad to zoom; ⌘+ / ⌘− and the toolbar buttons work too
 - Highlight text in four colours; attach a Note, Question or Key concept to any selection
 - Area tool for notes on diagrams, plus a pen and eraser
 - Sticky notes placed right on the page: drag to move, resize, recolor, minimize, or send any margin note to the page and back
@@ -13,6 +15,9 @@ A desktop-first study workspace for PDFs. Open a lecture deck or paper, highligh
 - Find in document (⌘F, ⌘G / ⇧⌘G for next / previous) with every match highlighted on the page
 - Undo/redo, "Original only" view, copy notes as Markdown
 - Local-first: PDFs and notes are stored in the browser (IndexedDB)
+
+### PowerPoint support
+The conversion runs in the browser (`pptx.js`), so it works offline. It draws text boxes and placeholders with their master and layout styles, shapes, pictures, groups, tables, SmartArt and backgrounds. Charts, video and EMF/WMF pictures are left out (you are told how many). Fonts are mapped to Helvetica, Times or Courier, so line breaks can differ slightly from PowerPoint. Older binary `.ppt` files are not supported: save them as `.pptx` or PDF first.
 
 ## Run locally
 ```bash

@@ -56,7 +56,7 @@ function buildMenu() {
       label: 'File',
       submenu: [
         {
-          label: 'Add PDF…',
+          label: 'Add PDF or PowerPoint…',
           accelerator: 'CmdOrCtrl+O',
           click: (_, win) => win && win.webContents.executeJavaScript("document.getElementById('fileInput').click()", true),
         },

@@ -13,6 +13,10 @@
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
   ],
   "file_handlers": [
-    { "action": "./", "accept": { "application/pdf": [".pdf"] } }
+    { "action": "./", "accept": {
+      "application/pdf": [".pdf"],
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
+      "application/vnd.openxmlformats-officedocument.presentationml.slideshow": [".ppsx"]
+    } }
   ]
 }
