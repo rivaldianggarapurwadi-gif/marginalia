@@ -81,6 +81,16 @@ button{cursor:pointer}
 .file svg{width:16px;height:16px;color:var(--muted)}
 .file .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .file .count{font-size:11px;color:var(--muted)}
+.filerow{position:relative}
+.filerow .file{padding-right:38px}
+.file-del{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:26px;height:26px;border:0;border-radius:6px;background:none;
+  color:var(--muted);display:grid;place-items:center;padding:0;opacity:0}
+.file-del svg{width:14px;height:14px}
+.filerow:hover .file-del,.file-del:focus-visible{opacity:1}
+.file-del:hover{background:var(--q-soft);color:var(--q)}
+.filerow:hover .count{visibility:hidden}
+@media (hover:none){.file-del{opacity:1}.filerow .count{visibility:hidden}}
+.empty-lib{display:grid;justify-items:center;gap:14px}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--raised)}
 .seg button{border:0;background:none;padding:4px 9px;font-size:12px;color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--fg);font-weight:600}
@@ -418,6 +428,7 @@ const ICON_NOTE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const STICKY = { yellow:'#FFF0A3', green:'#D2F4C9', pink:'#FFD6E4', blue:'#D2E8FF' };
 const ST_ORDER = ['yellow','green','pink','blue'];
 const ICON_SLIDES = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M12 17v3M8 20h8M7 9h6M7 12h10"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
 const ICON_DOC ='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>';
 
 /* ---------- Storage (IndexedDB, on this device only) ---------- */
@@ -442,6 +453,7 @@ const DB = {
     });
   },
   allDocs(){ return this.tx('docs','readonly', s => s.getAll()); },
+  delDoc(id){ return this.tx('docs','readwrite', s => s.delete(id)); },
   putDoc(d){ return this.tx('docs','readwrite', s => s.put(d)); },
   get(k){ return this.tx('kv','readonly', s => s.get(k)); },
   set(k,v){ return this.tx('kv','readwrite', s => s.put(v,k)); },
@@ -1106,7 +1118,7 @@ $('#scroller').addEventListener('scroll', () => { if(!$('#float').hidden) hideFl
 function renderFiles(){
   $('#fileList').innerHTML = S.docs.map(d => {
     const c = docAnns(d.id).length;
-    return `<li><button class="file" data-doc="${d.id}" aria-current="${d.id === S.current}" title="${d.source === 'pptx' ? 'PowerPoint slides' : 'PDF'}">${d.source === 'pptx' ? ICON_SLIDES : ICON_DOC}<span class="name">${esc(d.name)}</span><span class="count mono" title="Annotations">${c || ''}</span></button></li>`;
+    return `<li class="filerow"><button class="file" data-doc="${d.id}" aria-current="${d.id === S.current}" title="${d.source === 'pptx' ? 'PowerPoint slides' : 'PDF'}">${d.source === 'pptx' ? ICON_SLIDES : ICON_DOC}<span class="name">${esc(d.name)}</span><span class="count mono" title="Annotations">${c || ''}</span></button><button class="file-del" data-del="${d.id}" aria-label="Delete ${esc(d.name)}" title="Delete this file and its notes">${ICON_TRASH}</button></li>`;
   }).join('');
 }
 const FILTERS = [['all','All'],['note','Notes'],['question','Questions'],['key','Key concepts'],['highlight','Highlights']];
@@ -1152,12 +1164,40 @@ async function goTo(id){
   const c = $(`.card[data-id="${a.id}"], .sticky[data-id="${a.id}"]`); if(c){ c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); }
   closeSide();
 }
-$('#fileList').addEventListener('click', e => { const b = e.target.closest('[data-doc]'); if(b && b.dataset.doc !== S.current){ openDoc(b.dataset.doc); closeSide(); } });
+$('#fileList').addEventListener('click', e => {
+  const del = e.target.closest('[data-del]'); if(del){ deleteDoc(del.dataset.del); return; }
+  const b = e.target.closest('[data-doc]'); if(b && b.dataset.doc !== S.current){ openDoc(b.dataset.doc); closeSide(); } });
 $('#indexList').addEventListener('click', e => { const b = e.target.closest('.item'); if(b) goTo(b.dataset.id); });
 $('#chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if(!b) return; S.filter = b.dataset.filter; renderIndex(); });
 $('#scope').addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return; S.scope = b.dataset.scope;
   $$('#scope button').forEach(x => x.setAttribute('aria-pressed', x === b)); renderIndex(); });
 $('#search').addEventListener('input', e => { S.query = e.target.value; renderIndex(); });
+
+/* ---------- Deleting a file ---------- */
+// Removes the file, its annotations and margins from this device. The toast offers Undo.
+async function deleteDoc(id){
+  const d = S.docs.find(x => x.id === id); if(!d) return;
+  const idx = S.docs.indexOf(d), anns = docAnns(id), margins = S.margins[id], wasCurrent = S.current === id;
+  S.docs = S.docs.filter(x => x !== d); S.anns = S.anns.filter(a => a.docId !== id); delete S.margins[id];
+  // Undo snapshots still hold this file's notes, so restoring one would bring them back without their file
+  Hist.past = []; Hist.future = []; updHist();
+  await DB.delDoc(id); save();
+  if(wasCurrent){ if(S.docs.length) openDoc(S.docs[Math.min(idx, S.docs.length - 1)].id); else showEmpty(); }
+  else { renderFiles(); renderIndex(); }
+  const n = anns.length;
+  toast(`Deleted “${d.name}”${n ? ` and its ${n} annotation${n === 1 ? '' : 's'}` : ''}.`, 'Undo', async () => {
+    S.docs.splice(Math.min(idx, S.docs.length), 0, d); S.anns.push(...anns); if(margins) S.margins[id] = margins;
+    await DB.putDoc(d); save(); openDoc(id);
+  });
+}
+function showEmpty(){
+  if(F.open) closeFind();
+  S.current = null; S.active = null; hideFloat(); S.gen++; if(io) io.disconnect();
+  if(S.pdf){ S.pdf.destroy(); S.pdf = null; } S.pages = [];
+  $('#docTitle').textContent = 'No file open'; $('#docPages').textContent = '';
+  $('#sheets').innerHTML = '<div class="loading empty-lib"><span>Your library is empty.</span><label class="btn primary" for="fileInput">Add a PDF or PowerPoint file</label></div>';
+  DB.set('lastDoc', null); renderFiles(); renderIndex();
+}
 
 /* ---------- Importing PDFs and PowerPoint slides ---------- */
 // A .pptx is redrawn as a PDF once, on import, with real text. From then on it is
@@ -1313,6 +1353,7 @@ function markdown(){
   return md;
 }
 $('#copyMd').addEventListener('click', () => {
+  if(!S.current){ toast('Open a file first.'); return; }
   const md = markdown(); const n = docAnns(S.current).filter(a => a.kind !== 'ink').length;
   const fallback = () => {
     $('#modal').innerHTML = `<div class="modal-box" role="dialog" aria-label="Notes as Markdown"><h2>Your notes as Markdown</h2><p>Copying is blocked here. The text is selected: press ⌘C or Ctrl+C.</p><textarea id="mdOut" readonly></textarea><div><button class="btn primary" id="mdClose">Done</button></div></div>`;
@@ -1445,7 +1486,11 @@ addEventListener('keydown', e => {
   setTool('select'); updHist();
   await DB.open();
   let docs = (await DB.allDocs()) || [], anns = await DB.get('anns'), margins = await DB.get('margins');
-  if(!docs.length){
+  // The sample lecture is added once; after you delete everything, the library stays empty
+  const seeded = await DB.get('seeded');
+  if(docs.length && !seeded) DB.set('seeded', true);
+  if(!docs.length && !seeded){
+    DB.set('seeded', true);
     const { bytes, A } = makeSample();
     const d = { id:'sample-biol110-02', name:'Lecture 02 · Cell Biology', bytes, addedAt:Date.now(), example:true };
     docs = [d]; await DB.putDoc(d);
@@ -1455,7 +1500,8 @@ addEventListener('keydown', e => {
   S.docs = docs.sort((a,b) => a.addedAt - b.addedAt); S.anns = anns || []; S.margins = margins || {};
   setStatus(DB.db ? 'Saved on this device' : 'Storage blocked: notes last until this tab closes');
   const last = await DB.get('lastDoc');
-  await openDoc(S.docs.some(d => d.id === last) ? last : S.docs[0].id);
+  if(!S.docs.length) showEmpty();
+  else await openDoc(S.docs.some(d => d.id === last) ? last : S.docs[0].id);
 })();
 
 // Installable offline app (Android tablets, Chrome, Edge). Skipped in the desktop shell and on file:// pages.

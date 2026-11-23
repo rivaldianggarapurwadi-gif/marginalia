@@ -4,6 +4,7 @@ A desktop-first study workspace for PDFs. Open a lecture deck or paper, highligh
 
 ## Features
 - Open PDFs and PowerPoint slides (.pptx). Slides are converted to pages on import, with real text, so you highlight, search and annotate them exactly like a PDF
+- Delete a file from the library with the trash icon next to its name (always visible on touch screens). Its notes go with it, and the toast offers Undo
 - Pinch with two fingers (tablets, phones) or on a trackpad to zoom; ⌘+ / ⌘− and the toolbar buttons work too
 - Highlight text in four colours; attach a Note, Question or Key concept to any selection
 - Area tool for notes on diagrams, plus a pen and eraser
