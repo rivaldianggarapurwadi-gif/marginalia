@@ -82,6 +82,31 @@ button{cursor:pointer}
 .file .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .file .count{font-size:11px;color:var(--muted)}
 .filerow{position:relative}
+.file .nm{display:grid;min-width:0}
+.file .sub{font-size:10.5px;font-weight:400;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;gap:8px}
+.file .sub i{font-style:normal;display:inline-flex;align-items:center;gap:3px}
+.file .sub svg{width:10px;height:10px;color:inherit}
+.file .sub .bm{color:#C2410C}
+/* Bookmarks: the manual one is a ribbon on its page; "last read" is kept automatically */
+.ribbon{position:absolute;top:0;right:24px;z-index:7;width:30px;height:48px;border:0;padding:0;background:none;cursor:pointer;
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
+.ribbon::before{content:"";position:absolute;inset:0;background:#fff;clip-path:polygon(0 0,100% 0,100% 100%,50% 74%,0 100%)}
+.ribbon::after{content:"";position:absolute;inset:0 2px 3px;background:#E8590C;clip-path:polygon(0 0,100% 0,100% 100%,50% 74%,0 100%)}
+.ribbon:hover::after{background:#C2410C}
+.bmmenu{position:fixed;z-index:62;width:300px;max-width:calc(100vw - 16px);background:var(--raised);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:8px;display:grid;gap:4px}
+.bm-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:8px;border-radius:8px}
+.bm-row.none{opacity:.6}
+.bm-ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center}
+.bm-ic svg{width:15px;height:15px}
+.bm-ic.last{background:var(--accent-soft);color:var(--accent)}
+.bm-ic.mark{background:#FDE7DA;color:#C2410C}
+.bm-t{display:grid;min-width:0}
+.bm-t b{font-weight:600;font-size:13px}
+.bm-t small{font-size:11.5px;color:var(--muted)}
+.bm-acts{display:flex;gap:4px}
+.bm-sep{height:1px;background:var(--line);margin:4px 2px}
+.bmmenu .btn{justify-content:center}
+.bm-hint{font-size:11px;color:var(--muted);padding:2px 8px 4px}
 .filerow .file{padding-right:38px}
 .file-del{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:26px;height:26px;border:0;border-radius:6px;background:none;
   color:var(--muted);display:grid;place-items:center;padding:0;opacity:0}
@@ -384,6 +409,7 @@ body.clean .marks,body.clean .inklayer,body.clean .margin,body.clean .leaders,bo
       <div><b>Area</b> marks a diagram or region. <b>Pen</b> draws on the page.</div>
       <div><b>Sticky</b> puts a note right on the page. Drag its top bar to move it, or use the pin on any margin note.</div>
       <div><b>Drag a margin's edge</b> to make room. Double-click an empty margin to write there.</div>
+      <div><b>Bookmark</b> marks a page by hand (<kbd>B</kbd>). Each file also remembers where you <b>last read</b> and opens there.</div>
       <div><b>Pinch</b> with two fingers or on the trackpad to zoom. <kbd>⌘+</kbd> <kbd>⌘−</kbd> work too.</div>
       <div>The original PDF is never changed. <kbd>⌘Z</kbd> undoes.</div>
     </div>
@@ -409,6 +435,7 @@ body.clean .marks,body.clean .inklayer,body.clean .margin,body.clean .leaders,bo
         <span class="zoomval mono" id="zoomVal">100%</span>
         <button class="tool" id="zoomIn" aria-label="Zoom in">+</button>
       </div>
+      <button class="tool" id="bmBtn" title="Bookmark and last read (B bookmarks this page)" aria-label="Bookmarks" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3h12v18l-6-4.5L6 21z"/></svg><span class="lbl">Bookmark</span></button>
       <button class="tool" id="findBtn" title="Find in document (⌘F)" aria-label="Find in document"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><span class="lbl">Find</span></button>
       <span class="spacer"></span>
       <button class="tool" id="cleanBtn" aria-pressed="false" title="Show the original page without annotations">Original only</button>
@@ -427,6 +454,7 @@ body.clean .marks,body.clean .inklayer,body.clean .margin,body.clean .leaders,bo
 </div>
 <div id="float" class="float" hidden></div>
 <div id="toast" class="toast" role="status" hidden></div>
+<div id="bmMenu" class="bmmenu" role="dialog" aria-label="Bookmark and last read" hidden></div>
 <div id="drop" class="drop" hidden>Drop a PDF or PowerPoint file to add it to your library</div>
 <div id="modal" class="modal" hidden></div>
 
@@ -635,6 +663,7 @@ function setMargin(n, w){ (S.margins[S.current] ||= {})[n] = w; }
 let io;
 async function openDoc(id){
   const d = S.docs.find(x => x.id === id); if(!d) return;
+  RD.ready = false; closeBmMenu();
   S.current = id; S.active = null; hideFloat();
   DB.set('lastDoc', id);
   $('#docTitle').textContent = d.name; $('#docPages').textContent = '';
@@ -652,6 +681,7 @@ async function openDoc(id){
   S.scale = Math.round(S.scale * 20) / 20;
   d.pages = S.pdf.numPages; $('#docPages').textContent = d.pages + (d.pages === 1 ? ' page' : ' pages');
   await buildSheets();
+  resumeReading(id);
   F.cache = {}; if(F.open && F.q) runFind(F.q);
 }
 
@@ -678,6 +708,7 @@ async function buildSheets(){
   }
   wrap.innerHTML = ''; wrap.append(frag);
   for(let n = 1; n < S.pages.length; n++){ io.observe(S.pages[n].sheet); refreshPage(n); }
+  drawRibbon();
 }
 
 async function renderPage(n, gen){
@@ -1153,7 +1184,7 @@ $('#scroller').addEventListener('scroll', () => { if(!$('#float').hidden) hideFl
 function renderFiles(){
   $('#fileList').innerHTML = S.docs.map(d => {
     const c = docAnns(d.id).length;
-    return `<li class="filerow"><button class="file" data-doc="${d.id}" aria-current="${d.id === S.current}" title="${d.source === 'pptx' ? 'PowerPoint slides' : 'PDF'}">${d.source === 'pptx' ? ICON_SLIDES : ICON_DOC}<span class="name">${esc(d.name)}</span><span class="count mono" title="Annotations">${c || ''}</span></button><button class="file-del" data-del="${d.id}" aria-label="Delete ${esc(d.name)}" title="Delete this file and its notes">${ICON_TRASH}</button></li>`;
+    return `<li class="filerow"><button class="file" data-doc="${d.id}" aria-current="${d.id === S.current}" title="${d.source === 'pptx' ? 'PowerPoint slides' : 'PDF'}">${d.source === 'pptx' ? ICON_SLIDES : ICON_DOC}<span class="nm"><span class="name">${esc(d.name)}</span>${marksLine(d.id)}</span><span class="count mono" title="Annotations">${c || ''}</span></button><button class="file-del" data-del="${d.id}" aria-label="Delete ${esc(d.name)}" title="Delete this file and its notes">${ICON_TRASH}</button></li>`;
   }).join('');
 }
 const FILTERS = [['all','All'],['note','Notes'],['question','Questions'],['key','Key concepts'],['highlight','Highlights']];
@@ -1194,7 +1225,7 @@ async function goTo(id){
   if(inMargin(a) && !marginW(a.page)){ checkpoint(); setMargin(a.page, DEFAULT_MARGIN); save(); }
   if(onPage(a) && a.pin.min){ checkpoint(); a.pin.min = false; save(); }
   const prev = S.active; S.active = a.id; refreshActive(prev);
-  const sc = $('#scroller');
+  const sc = $('#scroller'); quietReading();
   sc.scrollTo({ top: P.sheet.offsetTop + (onPage(a) ? a.pin.y : box(a).y) * P.H - 140, behavior: reduceMotion ? 'auto' : 'smooth' });
   const c = $(`.card[data-id="${a.id}"], .sticky[data-id="${a.id}"]`); if(c){ c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); }
   closeSide();
@@ -1213,6 +1244,7 @@ $('#search').addEventListener('input', e => { S.query = e.target.value; renderIn
 async function deleteDoc(id){
   const d = S.docs.find(x => x.id === id); if(!d) return;
   const idx = S.docs.indexOf(d), anns = docAnns(id), margins = S.margins[id], wasCurrent = S.current === id;
+  const lastRead = RD.last[id], mark = RD.marks[id]; delete RD.last[id]; delete RD.marks[id]; saveMarks();
   S.docs = S.docs.filter(x => x !== d); S.anns = S.anns.filter(a => a.docId !== id); delete S.margins[id];
   // Undo snapshots still hold this file's notes, so restoring one would bring them back without their file
   Hist.past = []; Hist.future = []; updHist();
@@ -1222,6 +1254,7 @@ async function deleteDoc(id){
   const n = anns.length;
   toast(`Deleted “${d.name}”${n ? ` and its ${n} annotation${n === 1 ? '' : 's'}` : ''}.`, 'Undo', async () => {
     S.docs.splice(Math.min(idx, S.docs.length), 0, d); S.anns.push(...anns); if(margins) S.margins[id] = margins;
+    if(lastRead) RD.last[id] = lastRead; if(mark) RD.marks[id] = mark; saveMarks();
     await DB.putDoc(d); save(); openDoc(id);
   });
 }
@@ -1517,6 +1550,118 @@ const openSide = () => { $('#side').classList.add('open'); $('#backdrop').classL
 const closeSide = () => { $('#side').classList.remove('open'); $('#backdrop').classList.remove('show'); };
 $('#libBtn').addEventListener('click', openSide); $('#backdrop').addEventListener('click', closeSide);
 
+/* ---------- Last read and bookmark ---------- */
+// Two separate marks per file, both kept on this device:
+//  - Last read follows you: the spot in view when you stop scrolling. The file reopens there.
+//    Jumps made by the app (search, notes list, going to the bookmark) do not move it.
+//  - The bookmark is yours: a ribbon on the page you chose. It stays until you move or remove it.
+const RD = { last:{}, marks:{}, ready:false, quiet:0, t:0 };
+const ICON_RIBBON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h12v18l-6-4.5L6 21z"/></svg>';
+const ICON_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h6a2 2 0 012 2v13a2 2 0 00-2-2H4zM20 5h-6a2 2 0 00-2 2v13a2 2 0 012-2h6z"/></svg>';
+let marksTimer;
+function saveMarks(){ clearTimeout(marksTimer); marksTimer = setTimeout(() => { DB.set('lastRead', RD.last); DB.set('bookmarks', RD.marks); }, 300); }
+function marksLine(id){
+  const l = RD.last[id], m = RD.marks[id]; if(!l && !m) return '';
+  return `<span class="sub">${l ? `<i title="Last read">${ICON_EYE}p. ${l.page}</i>` : ''}${m ? `<i class="bm" title="Bookmark">${ICON_RIBBON}p. ${m.page}</i>` : ''}</span>`;
+}
+// The page in view (the one crossing a line a third of the way down) and how far into it the view starts
+function readingSpot(){
+  const sc = $('#scroller'); if(!S.pages.length) return null;
+  const line = sc.scrollTop + sc.clientHeight / 3;
+  for(let n = 1; n < S.pages.length; n++){
+    const sh = S.pages[n].sheet;
+    if(sh.offsetTop + sh.offsetHeight + 15 > line || n === S.pages.length - 1)
+      return { page:n, f:clamp((sc.scrollTop + 40 - sh.offsetTop) / sh.offsetHeight, 0, 0.98) };
+  }
+  return null;
+}
+function scrollToSpot(spot, smooth){
+  const P = S.pages[spot.page]; if(!P) return; quietReading();
+  $('#scroller').scrollTo({ top:Math.max(0, P.sheet.offsetTop + (spot.f || 0) * P.sheet.offsetHeight - 40), behavior:smooth && !reduceMotion ? 'smooth' : 'auto' });
+}
+const quietReading = () => { RD.quiet = Date.now() + 1200; };
+function recordReading(){
+  if(!RD.ready || !S.current || Z.busy || Date.now() < RD.quiet) return;
+  const spot = readingSpot(); if(!spot) return;
+  const prev = RD.last[S.current];
+  RD.last[S.current] = { ...spot, at:Date.now() }; saveMarks();
+  if(!prev || prev.page !== spot.page) renderFiles();
+}
+function resumeReading(id){
+  const l = RD.last[id];
+  if(l && S.pages[l.page] && (l.page > 1 || l.f > 0.05)){
+    scrollToSpot(l);
+    toast(`Back where you left off: page ${l.page}.`, 'Go to page 1', () => { $('#scroller').scrollTo({ top:0 }); });
+  }
+  setTimeout(() => { RD.ready = true; }, 300);
+}
+$('#scroller').addEventListener('scroll', () => {
+  clearTimeout(RD.t);
+  // While a jump made by the app is still scrolling, keep quiet until it settles
+  if(Date.now() < RD.quiet){ RD.quiet = Date.now() + 400; return; }
+  RD.t = setTimeout(recordReading, 500);
+}, { passive:true });
+addEventListener('pagehide', recordReading);
+document.addEventListener('visibilitychange', () => { if(document.hidden){ recordReading(); DB.set('lastRead', RD.last); } });
+
+function drawRibbon(){
+  $$('#sheets .ribbon').forEach(r => r.remove());
+  const m = S.current && RD.marks[S.current], P = m && S.pages[m.page]; if(!P) return;
+  const r = document.createElement('button'); r.className = 'ribbon'; r.title = `Bookmark · page ${m.page}`; r.setAttribute('aria-label', 'Bookmark on this page');
+  r.onclick = e => { e.stopPropagation(); openBmMenu(r); };
+  $('.page', P.sheet).append(r);
+}
+function setBookmark(page){
+  const id = S.current; if(!id || !S.pages[page]) return;
+  const prev = RD.marks[id];
+  RD.marks[id] = { page, f:0, at:Date.now() }; saveMarks(); drawRibbon(); renderFiles();
+  toast(prev ? `Bookmark moved to page ${page}.` : `Bookmarked page ${page}.`, 'Undo', () => { if(prev) RD.marks[id] = prev; else delete RD.marks[id]; saveMarks(); drawRibbon(); renderFiles(); });
+}
+function removeBookmark(){
+  const id = S.current, prev = RD.marks[id]; if(!prev) return;
+  delete RD.marks[id]; saveMarks(); drawRibbon(); renderFiles();
+  toast(`Bookmark on page ${prev.page} removed.`, 'Undo', () => { RD.marks[id] = prev; saveMarks(); drawRibbon(); renderFiles(); });
+}
+// B: bookmark the page in view, or take the bookmark off if it is already here
+function toggleBookmark(){
+  if(!S.pdf) return; const spot = readingSpot(); if(!spot) return;
+  if(RD.marks[S.current]?.page === spot.page) removeBookmark(); else setBookmark(spot.page);
+  closeBmMenu();
+}
+const ago = t => { const m = Math.round((Date.now() - t) / 60000);
+  return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : new Date(t).toLocaleDateString(undefined, { day:'numeric', month:'short' }); };
+function openBmMenu(anchor){
+  if(!S.pdf){ toast('Open a file first.'); return; }
+  const menu = $('#bmMenu'), id = S.current, l = RD.last[id], m = RD.marks[id], here = readingSpot()?.page || 1, total = S.pages.length - 1;
+  menu.innerHTML = `
+    <div class="bm-row${l ? '' : ' none'}"><span class="bm-ic last">${ICON_EYE}</span>
+      <span class="bm-t"><b>Last read</b><small>${l ? `Page ${l.page} of ${total} · ${ago(l.at)}` : 'Kept automatically as you read'}</small></span>
+      <span class="bm-acts">${l && l.page !== here ? '<button class="btn small" data-bm="last">Go</button>' : l ? '<small class="bm-hint">You are here</small>' : ''}</span></div>
+    <div class="bm-row${m ? '' : ' none'}"><span class="bm-ic mark">${ICON_RIBBON}</span>
+      <span class="bm-t"><b>Bookmark</b><small>${m ? `Page ${m.page} of ${total} · set ${ago(m.at)}` : 'None yet'}</small></span>
+      <span class="bm-acts">${m && m.page !== here ? '<button class="btn small" data-bm="mark">Go</button>' : ''}${m ? `<button class="btn small" data-bm="remove" aria-label="Remove bookmark" title="Remove bookmark">${ICON_X}</button>` : ''}</span></div>
+    <div class="bm-sep"></div>
+    ${m && m.page === here ? `<button class="btn" data-bm="remove">Remove bookmark from page ${here}</button>`
+      : `<button class="btn primary" data-bm="set">${m ? `Move bookmark to page ${here}` : `Bookmark page ${here}`}</button>`}
+    <div class="bm-hint">Press B to bookmark the page in view.</div>`;
+  menu.hidden = false;
+  const r = (anchor || $('#bmBtn')).getBoundingClientRect(), w = menu.offsetWidth, h = menu.offsetHeight;
+  let top = r.bottom + 6; if(top + h > innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  menu.style.left = clamp(r.left + r.width / 2 - w / 2, 8, innerWidth - w - 8) + 'px'; menu.style.top = top + 'px';
+  $('#bmBtn').setAttribute('aria-expanded', 'true');
+  menu.onclick = e => {
+    const b = e.target.closest('[data-bm]'); if(!b) return; const a = b.dataset.bm;
+    closeBmMenu();
+    if(a === 'last' && RD.last[id]) scrollToSpot(RD.last[id], true);
+    else if(a === 'mark' && RD.marks[id]) scrollToSpot(RD.marks[id], true);
+    else if(a === 'set') setBookmark(here);
+    else if(a === 'remove') removeBookmark();
+  };
+}
+function closeBmMenu(){ const m = $('#bmMenu'); if(m && !m.hidden){ m.hidden = true; $('#bmBtn').setAttribute('aria-expanded', 'false'); } }
+$('#bmBtn').addEventListener('click', e => { e.stopPropagation(); $('#bmMenu').hidden ? openBmMenu() : closeBmMenu(); });
+document.addEventListener('pointerdown', e => { const t = e.target.nodeType === 1 ? e.target : null; if(!t?.closest('#bmMenu') && !t?.closest('#bmBtn') && !t?.closest('.ribbon')) closeBmMenu(); });
+
 /* ---------- Find in document (⌘F) ---------- */
 const F = { open:false, q:'', hits:[], cur:-1, cache:{}, token:0 };
 async function pageText(n){
@@ -1578,7 +1723,7 @@ function updateFind(prevPage){
 }
 function scrollToHit(){
   const h = F.hits[F.cur]; const P = h && S.pages[h.page]; if(!P) return;
-  const sc = $('#scroller'), r = h.rects[0];
+  const sc = $('#scroller'), r = h.rects[0]; quietReading();
   sc.scrollTo({ top: P.sheet.offsetTop + r[1] * P.H - sc.clientHeight / 3, left: Math.max(0, P.sheet.offsetLeft + r[0] * P.W - sc.clientWidth / 2), behavior: reduceMotion ? 'auto' : 'smooth' });
 }
 function findStep(d){
@@ -1617,11 +1762,12 @@ addEventListener('keydown', e => {
   if(mod && e.key.toLowerCase() === 'g'){ e.preventDefault(); findStep(e.shiftKey ? -1 : 1); return; }
   if(mod && !e.altKey && (e.key === '=' || e.key === '+')){ e.preventDefault(); zoom(0.1); return; }
   if(mod && !e.altKey && e.key === '-'){ e.preventDefault(); zoom(-0.1); return; }
-  if(e.key === 'Escape'){ if(F.open && !typing){ closeFind(); return; } hideFloat(); if(typing) e.target.blur(); if(!DRV.busy) $('#modal').hidden = true; closeSide(); return; }
+  if(e.key === 'Escape'){ if(!$('#bmMenu').hidden){ closeBmMenu(); return; } if(F.open && !typing){ closeFind(); return; } hideFloat(); if(typing) e.target.blur(); if(!DRV.busy) $('#modal').hidden = true; closeSide(); return; }
   if(typing) return;
   if(mod && e.key.toLowerCase() === 'z'){ e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if(mod && e.key.toLowerCase() === 'y'){ e.preventDefault(); redo(); return; }
   if(mod || e.altKey) return;
+  if(e.key === 'b' || e.key === 'B'){ toggleBookmark(); return; }
   const map = { v:'select', a:'area', p:'pen', e:'eraser', s:'sticky' }; if(map[e.key]) setTool(map[e.key]);
 });
 
@@ -1642,6 +1788,7 @@ addEventListener('keydown', e => {
     await DB.set('anns', anns); await DB.set('margins', margins);
   }
   S.docs = docs.sort((a,b) => a.addedAt - b.addedAt); S.anns = anns || []; S.margins = margins || {};
+  RD.last = (await DB.get('lastRead')) || {}; RD.marks = (await DB.get('bookmarks')) || {};
   setStatus(DB.db ? 'Saved on this device' : 'Storage blocked: notes last until this tab closes');
   const last = await DB.get('lastDoc');
   if(!S.docs.length) showEmpty();
