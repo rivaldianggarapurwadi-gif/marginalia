@@ -5,6 +5,7 @@ A desktop-first study workspace for PDFs. Open a lecture deck or paper, highligh
 ## Features
 - Open PDFs and PowerPoint slides (.pptx). Slides are converted to pages on import, with real text, so you highlight, search and annotate them exactly like a PDF
 - Add files from a shared Google Drive folder (button **Drive**): paste a folder link shared as "Anyone with the link", tick files (subfolders included) and they are copied into the library. PDFs, PowerPoint and Google Slides/Docs/Sheets (exported as PDF) are supported; the list shows what is already added or changed in Drive
+- Two reading marks per file: **Last read** is saved automatically as you scroll and the file reopens there; the **Bookmark** (toolbar button or <kbd>B</kbd>) is a ribbon on the page you choose and stays until you move or remove it. Both show under the file name in the library
 - Delete a file from the library with the trash icon next to its name (always visible on touch screens). Its notes go with it, and the toast offers Undo
 - Pinch with two fingers (tablets, phones) or on a trackpad to zoom; ⌘+ / ⌘− and the toolbar buttons work too
 - Highlight text in four colours; attach a Note, Question or Key concept to any selection
